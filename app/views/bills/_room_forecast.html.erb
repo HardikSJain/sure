@@ -1,0 +1,152 @@
+<%# locals: (forecast:) %>
+<%
+  account = forecast.account
+  currency = account.currency
+  money = ->(amount) { format_money(Money.new(amount, currency), precision: 0) }
+  floor = forecast.floor
+  lows = forecast.low_points
+  focus = forecast.first_tight || lows.min_by(&:balance)
+  tight = forecast.first_tight
+  later = lows.select { |low| tight && low.date > tight.date && (low.under_floor || low.near_floor) }
+
+  # Step chart of the balance, from the last-known day through the horizon.
+  w, h, left, right, top, bottom = 760.0, 236.0, 52.0, 750.0, 22.0, 206.0
+  points = [ [ forecast.last_known_date, forecast.starting_balance ] ] + forecast.days.map { |d| [ d.date, d.balance ] }
+  values = points.map(&:last) + [ floor, 0 ]
+  lo = values.min.to_f
+  hi = [ values.max.to_f * 1.08, lo + 1 ].max
+  span = (forecast.end_date - forecast.last_known_date).to_f
+  x = ->(date) { (left + (date - forecast.last_known_date) / span * (right - left)).round(1) }
+  y = ->(v) { (bottom - (v.to_f - lo) / (hi - lo) * (bottom - top)).round(1) }
+  path = +"M#{x.(points.first[0])},#{y.(points.first[1])}"
+  points.drop(1).each { |date, balance| path << " H#{x.(date)} V#{y.(balance)}" }
+  ticks = [ forecast.last_known_date ] + (forecast.last_known_date.next_month.beginning_of_month..forecast.end_date).select { |d| d.day == 1 }
+  balance_on = forecast.days.index_by(&:date)
+%>
+<section id="room-forecast-<%= account.id %>" class="bg-container rounded-xl shadow-border-xs p-4 space-y-4"
+         <%= "data-room-forecast-tight" if tight %>>
+  <div class="flex flex-wrap items-center justify-between gap-2">
+    <h2 class="text-base font-medium text-primary"><%= t(".title", account: account.name) %></h2>
+    <details class="relative">
+      <summary class="focus-ring list-none cursor-pointer text-xs rounded-full bg-container-inset px-3 py-1.5 text-secondary hover:text-primary [&::-webkit-details-marker]:hidden">
+        <%= floor.positive? ? t(".keep_at_least_html", amount: money.(floor)) : t(".set_floor") %>
+        <%= icon("pencil", size: "xs", class: "inline ml-0.5") %>
+      </summary>
+      <%= form_with url: account_cash_floor_path(account), method: :patch, class: "absolute right-0 top-full mt-1.5 z-10 w-64 p-3 space-y-2 bg-surface rounded-xl shadow-border-xs border border-primary" do |f| %>
+        <%= f.label "cash_floor[amount]", t(".floor_label", account: account.name), class: "block text-xs text-secondary" %>
+        <div class="flex gap-2">
+          <%= f.number_field "cash_floor[amount]", value: floor.positive? ? floor.to_i : nil, min: 0, step: 1, class: "form-field__input w-full text-sm rounded-lg border border-secondary px-2 py-1 bg-container" %>
+          <%= f.submit t(".save"), class: "text-xs rounded-lg bg-inverse text-inverse px-3" %>
+        </div>
+      <% end %>
+    </details>
+  </div>
+
+  <% if tight %>
+    <div class="flex items-start gap-3 rounded-xl bg-destructive/5 px-4 py-3" role="status">
+      <%= icon("triangle-alert", size: "sm", color: "destructive", class: "mt-0.5") %>
+      <div class="space-y-1 text-sm">
+        <p class="text-primary privacy-sensitive">
+          <% if floor.positive? %>
+            <%= t(".tight_html", date: l(tight.date, format: "%-d %b"), account: account.name, balance: money.(tight.balance), gap: money.(floor - tight.balance), floor: money.(floor)) %>
+          <% else %>
+            <%= t(".tight_no_floor_html", date: l(tight.date, format: "%-d %b"), account: account.name, balance: money.(tight.balance)) %>
+          <% end %>
+          <% later.first(1).each do |low| %>
+            <%= low.under_floor ? t(".then_tight", date: l(low.date, format: "%-d %b"), balance: money.(low.balance)) : t(".then_near", date: l(low.date, format: "%-d %b"), balance: money.(low.balance)) %>
+          <% end %>
+        </p>
+        <% if forecast.suggestions.any? { |s| s.kind == :move_due_date } %>
+          <p class="text-xs text-destructive"><%= t(".cause_due_before_payday") %></p>
+        <% end %>
+      </div>
+    </div>
+  <% elsif focus %>
+    <p class="text-sm text-secondary privacy-sensitive">
+      <%= t(focus.near_floor ? ".near" : (floor.positive? ? ".room_with_floor" : ".room"),
+            date: l(focus.date, format: "%-d %b"), balance: money.(focus.balance), floor: money.(floor)) %>
+    </p>
+  <% end %>
+
+  <svg viewBox="0 0 <%= w.to_i %> <%= h.to_i %>" class="w-full h-auto" role="img"
+       aria-label="<%= t(".chart_aria", account: account.name, start: l(forecast.last_known_date, format: "%-d %b"), finish: l(forecast.end_date, format: "%-d %b"), low: focus ? money.(focus.balance) : "", low_date: focus ? l(focus.date, format: "%-d %b") : "") %>">
+    <line x1="<%= left %>" x2="<%= right %>" y1="<%= y.(0) %>" y2="<%= y.(0) %>" stroke="currentColor" stroke-opacity=".12" />
+    <% if floor.positive? %>
+      <rect x="<%= left %>" y="<%= y.(floor) %>" width="<%= right - left %>" height="<%= (y.(lo) - y.(floor)).clamp(0, h) %>" fill="var(--color-red-500)" fill-opacity=".06" />
+      <line x1="<%= left %>" x2="<%= right %>" y1="<%= y.(floor) %>" y2="<%= y.(floor) %>" stroke="var(--color-red-500)" stroke-width="1.2" stroke-dasharray="6 5" />
+      <text x="<%= right - 4 %>" y="<%= y.(floor) - 5 %>" text-anchor="end" font-size="11" fill="var(--color-red-500)" class="privacy-sensitive"><%= t(".floor_line", amount: money.(floor)) %></text>
+    <% end %>
+    <% ticks.each do |date| %>
+      <text x="<%= x.(date) %>" y="<%= h - 6 %>" text-anchor="middle" font-size="11" fill="currentColor" fill-opacity=".45"><%= l(date, format: "%-d %b") %></text>
+    <% end %>
+    <path d="<%= path %>" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
+    <circle cx="<%= x.(forecast.last_known_date) %>" cy="<%= y.(forecast.starting_balance) %>" r="4" fill="var(--color-white)" stroke="currentColor" stroke-width="2" />
+    <% forecast.paydays.each do |date| %>
+      <% if (day = balance_on[date]) %><circle cx="<%= x.(date) %>" cy="<%= y.(day.balance) %>" r="4" fill="var(--color-green-500)"><title><%= t(".payday") %> <%= l(date, format: "%-d %b") %></title></circle><% end %>
+    <% end %>
+    <% forecast.events.select { |e| e.kind == :top_up }.each do |e| %>
+      <% if (day = balance_on[e.date]) %><circle cx="<%= x.(e.date) %>" cy="<%= y.(day.balance) %>" r="4" fill="var(--color-violet-500)"><title><%= e.name %></title></circle><% end %>
+    <% end %>
+    <% lows.select { |low| low.under_floor || low.near_floor }.each do |low| %>
+      <% color = low.under_floor ? "var(--color-red-500)" : "var(--color-yellow-500)" %>
+      <% cx = x.(low.date) %>
+      <circle cx="<%= cx %>" cy="<%= y.(low.balance) %>" r="9" fill="<%= color %>" fill-opacity=".18" />
+      <circle cx="<%= cx %>" cy="<%= y.(low.balance) %>" r="4.5" fill="<%= color %>" />
+      <g transform="translate(<%= (cx - 46).clamp(left, right - 92) %> <%= [ y.(low.balance) - 32, top ].max %>)">
+        <rect width="92" height="20" rx="10" fill="<%= color %>" />
+        <text x="46" y="14" text-anchor="middle" font-size="11" fill="white" class="privacy-sensitive"><%= money.(low.balance) %> · <%= l(low.date, format: "%-d %b") %></text>
+      </g>
+    <% end %>
+  </svg>
+
+  <% if focus %>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="space-y-1">
+        <p class="text-xs text-secondary"><%= t(".up_to_low", date: l(focus.date, format: "%-d %b")) %></p>
+        <ul class="text-sm divide-y divide-gray-100">
+          <li class="flex items-baseline justify-between gap-3 py-1.5">
+            <span class="w-14 shrink-0 text-xs text-secondary"><%= l(forecast.last_known_date, format: "%-d %b") %></span>
+            <span class="flex-1"><%= t(".last_known") %></span>
+            <span class="font-medium privacy-sensitive"><%= money.(forecast.starting_balance) %></span>
+          </li>
+          <% if forecast.daily_spend.positive? %>
+            <li class="flex items-baseline justify-between gap-3 py-1.5">
+              <span class="w-14 shrink-0 text-xs text-secondary"><%= t(".daily") %></span>
+              <span class="flex-1"><%= t(".daily_spend") %></span>
+              <span class="font-medium privacy-sensitive">−<%= t(".per_day", amount: money.(forecast.daily_spend)) %></span>
+            </li>
+          <% end %>
+          <% focus.events_before.each do |event| %>
+            <li class="flex items-baseline justify-between gap-3 py-1.5">
+              <span class="w-14 shrink-0 text-xs text-secondary"><%= l(event.date, format: "%-d %b") %></span>
+              <span class="flex-1">
+                <%= event.name %>
+                <% tag = event.estimate ? t(".estimate") : (event.kind == :pending ? t(".pending") : nil) %>
+                <% if tag %><span class="ml-1 rounded-full bg-warning/10 px-1.5 py-0.5 text-[10px] text-warning"><%= tag %></span><% end %>
+              </span>
+              <span class="font-medium whitespace-nowrap privacy-sensitive <%= "text-success" if event.inflow? %>"><%= event.inflow? ? "+" : "−" %><%= money.(event.amount.abs) %></span>
+            </li>
+          <% end %>
+          <li class="flex items-baseline justify-between gap-3 py-1.5">
+            <span class="w-14 shrink-0"></span>
+            <span class="flex-1 font-medium"><%= t(".lowest_point") %></span>
+            <span class="font-medium privacy-sensitive <%= focus.under_floor ? "text-destructive" : "text-primary" %>"><%= money.(focus.balance) %></span>
+          </li>
+        </ul>
+      </div>
+
+      <% if forecast.suggestions.any? %>
+        <div class="space-y-2">
+          <p class="text-xs text-secondary"><%= t(".make_room") %></p>
+          <% forecast.suggestions.each do |s| %>
+            <% args = { name: s.name, amount: s.amount ? money.(s.amount) : nil, date: s.date ? l(s.date, format: "%-d %b") : nil, balance: s.balance_if ? money.(s.balance_if) : nil } %>
+            <div class="rounded-lg px-3 py-2 text-sm <%= s.kind == :income_dependency ? "bg-warning/10" : "bg-container-inset" %>">
+              <p class="font-medium privacy-sensitive"><%= t(".suggestions.#{s.kind}.title", **args) %></p>
+              <p class="text-xs text-secondary privacy-sensitive"><%= t(".suggestions.#{s.kind}.body", **args) %></p>
+            </div>
+          <% end %>
+        </div>
+      <% end %>
+    </div>
+  <% end %>
+</section>

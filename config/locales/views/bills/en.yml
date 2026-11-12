@@ -1,6 +1,45 @@
 ---
 en:
   bills:
+    room_forecast:
+      title: "Will %{account} have room?"
+      keep_at_least_html: "Keep at least <b>%{amount}</b>"
+      set_floor: "Set the least to keep"
+      floor_label: "Least to keep in %{account}"
+      save: "Save"
+      tight_html: "On <b>%{date}</b> %{account} could drop to <b>%{balance}</b>, <b>%{gap} under</b> your floor of %{floor}."
+      tight_no_floor_html: "On <b>%{date}</b> %{account} could go below zero, to <b>%{balance}</b>."
+      then_tight: "Then %{balance} on %{date}."
+      then_near: "On %{date} it's %{balance}, only just above."
+      cause_due_before_payday: "Why: card bills fall due just before payday, so the balance bottoms out the day before your salary."
+      near: "Lowest point %{balance} on %{date}, only just above your floor of %{floor}."
+      room_with_floor: "Lowest point %{balance} on %{date}, above your floor of %{floor}."
+      room: "Lowest point %{balance} on %{date}."
+      chart_aria: "%{account} balance from %{start} to %{finish}, lowest %{low} on %{low_date}"
+      floor_line: "your floor %{amount}"
+      payday: "Payday"
+      up_to_low: "Up to the low point on %{date}"
+      last_known: "Last known balance"
+      daily: "daily"
+      daily_spend: "Everyday spending (your daily average)"
+      per_day: "%{amount}/day"
+      estimate: "estimate until the statement is in"
+      pending: "not on the statement yet"
+      lowest_point: "Lowest point"
+      make_room: "What would make room"
+      suggestions:
+        move_due_date:
+          title: "Move the %{name} due date after payday"
+          body: "Its bill then comes out of the new salary. That fixes it for good."
+        receivable:
+          title: "%{name}: %{amount} when it comes back"
+          body: "The low point would be %{balance}."
+        income_dependency:
+          title: "Watch: %{name} on %{date}"
+          body: "If it's late, the low point falls to %{balance}."
+        wallet_top_up:
+          title: "%{name}: about %{amount} around %{date}"
+          body: "The wallet can't cover its next bill, so this goes from the bank. Already counted above."
     row_overdue: Overdue
     row_today: Today
     detect:

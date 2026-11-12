@@ -84,6 +84,12 @@ class BillsController < ApplicationController
 
     @month_pay_periods = month_pay_periods(today, month_end)
 
+    # Will each bank account with bills attached have room before payday?
+    accessible_ids = Current.user.accessible_accounts.pluck(:id).to_set
+    @room_forecasts = CashForecast.accounts_for(Current.family)
+                                  .select { |account| accessible_ids.include?(account.id) }
+                                  .map { |account| CashForecast.new(account, user: Current.user) }
+
     @detected_awaiting_review = detected_awaiting_review
     # Fresh detections wait here for confirm/dismiss. Reviewing them is bill
     # work, so the strip lives on this page as well as in Settings.

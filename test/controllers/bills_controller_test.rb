@@ -17,6 +17,33 @@ class BillsControllerTest < ActionDispatch::IntegrationTest
     ensure_tailwind_build
   end
 
+  test "the overview shows whether a bank account will have room, against its floor" do
+    travel_to Date.new(2026, 6, 15)
+    bank = accounts(:depository)
+    bank.entries.create!(name: "Statement balance", date: Date.current, amount: 1000, currency: bank.currency,
+                         entryable: Valuation.new(kind: "reconciliation"))
+    bank.update!(balance: 1000)
+    create_bill(name: "Big bill", amount: 900, account: bank, manual: true, anchor_date: Date.current + 5,
+                expected_day_of_month: (Date.current + 5).day, next_expected_date: Date.current + 5)
+    @user.update_cash_floor!(bank, 500)
+
+    get bills_url
+
+    assert_response :ok
+    assert_select "#room-forecast-#{bank.id}" do
+      assert_select "[data-room-forecast-tight]"
+      assert_select "form[action='#{account_cash_floor_path(bank)}']"
+      assert_select "svg"
+    end
+  end
+
+  test "an account with nothing attached gets no room forecast" do
+    get bills_url
+
+    assert_response :ok
+    assert_select "[id^='room-forecast-']", count: 0
+  end
+
   test "redirects users without preview access" do
     @user.update!(preferences: (@user.preferences || {}).merge("preview_features_enabled" => false))
 
@@ -180,9 +207,12 @@ class BillsControllerTest < ActionDispatch::IntegrationTest
       assert_select links.first, "p.font-medium", text: "Card payment"
       assert_select links.first, "p.text-xs", text: /#{I18n.t("bills.debt_payment")}/
     end
-    assert_no_match "Salary deposit", response.body
-    assert_no_match "Paused bill", response.body
-    assert_no_match "Moved to savings", response.body
+    # The bill lists, that is: the room forecast above them walks the bank
+    # balance, so income and transfers out rightly appear there.
+    lists = Nokogiri::HTML(response.body).tap { |page| page.css("[id^='room-forecast-']").remove }.to_html
+    assert_no_match "Salary deposit", lists
+    assert_no_match "Paused bill", lists
+    assert_no_match "Moved to savings", lists
   end
 
   test "index shows an overdue occurrence in the overdue section" do

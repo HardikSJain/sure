@@ -2,6 +2,10 @@
   <%= render "bills/view_switcher", active: "overview" %>
 
   <div class="space-y-4 min-w-0">
+  <% @room_forecasts&.each do |forecast| %>
+    <%= render "bills/room_forecast", forecast: forecast %>
+  <% end %>
+
   <%# Nothing here was confirmed by anyone: detection built it from bank data.
       Says so once, and stops as soon as the user works with any of it. %>
   <% if @detected_awaiting_review.positive? %>
