@@ -1,0 +1,92 @@
+<%# locals: (upcoming:, **args) %>
+<div id="upcoming-money" class="px-4 pb-4 space-y-4">
+  <% if upcoming.any? %>
+    <%
+      # Step chart of bank cash over the window: flat between days, a step on each one.
+      w, h, pad = 300.0, 56.0, 4.0
+      points = [ [ 0, upcoming.starting_cash.amount ] ]
+      upcoming.rows.each { |r| points << [ (r.date - upcoming.today).to_i, r.balance_after.amount ] }
+      values = points.map(&:last) + [ 0 ]
+      lo = values.min.to_f
+      hi = [ values.max.to_f, lo + 1 ].max
+      x = ->(day) { (day.to_f / Dashboard::UpcomingMoney::DAYS_AHEAD * w).round(1) }
+      y = ->(v) { (pad + (hi - v.to_f) / (hi - lo) * (h - 2 * pad)).round(1) }
+      path = +"M0,#{y.(points.first.last)}"
+      points.drop(1).each { |(day, v)| path << " H#{x.(day)} V#{y.(v)}" }
+      path << " H#{w}"
+    %>
+    <div class="grid grid-cols-3 gap-3 text-sm">
+      <div>
+        <p class="text-xs text-secondary"><%= t(".cash_now") %></p>
+        <p class="font-medium privacy-sensitive"><%= format_money(upcoming.starting_cash, precision: 0) %></p>
+      </div>
+      <div>
+        <p class="text-xs text-secondary"><%= t(".coming_in") %></p>
+        <p class="font-medium text-success privacy-sensitive">+<%= format_money(upcoming.money_in, precision: 0) %></p>
+      </div>
+      <div>
+        <p class="text-xs text-secondary"><%= t(".going_out") %></p>
+        <p class="font-medium privacy-sensitive">−<%= format_money(upcoming.money_out, precision: 0) %></p>
+      </div>
+    </div>
+
+    <div class="space-y-1">
+      <svg viewBox="0 0 <%= w.to_i %> <%= h.to_i %>" preserveAspectRatio="none" class="w-full h-14" role="img"
+           aria-label="<%= t(".chart_aria", start: format_money(upcoming.starting_cash, precision: 0), finish: format_money(upcoming.ending_cash, precision: 0)) %>">
+        <% if lo.negative? %>
+          <line x1="0" x2="<%= w %>" y1="<%= y.(0) %>" y2="<%= y.(0) %>" stroke="var(--color-red-500)" stroke-dasharray="3 3" stroke-width="1" vector-effect="non-scaling-stroke" />
+        <% end %>
+        <path d="<%= path %> V<%= h %> H0 Z" fill="var(--color-green-500)" fill-opacity="0.08" />
+        <path d="<%= path %>" fill="none" stroke="var(--color-green-500)" stroke-width="1.5" vector-effect="non-scaling-stroke" />
+      </svg>
+      <div class="flex justify-between text-[10px] text-secondary">
+        <span><%= t(".today") %></span>
+        <span><%= l(upcoming.horizon, format: "%d %b") %></span>
+      </div>
+    </div>
+
+    <% if (low = upcoming.low_point) %>
+      <div class="flex items-start gap-2 rounded-lg px-3 py-2 text-xs <%= upcoming.goes_negative? ? "bg-destructive/10 text-destructive" : "bg-container-inset text-secondary" %>">
+        <%= icon(upcoming.goes_negative? ? "triangle-alert" : "arrow-down-to-line", size: "xs", color: "current", class: "mt-0.5") %>
+        <span class="privacy-sensitive">
+          <%= t(upcoming.goes_negative? ? ".goes_negative" : ".low_point",
+                amount: format_money(low.balance_after, precision: 0), date: l(low.date, format: "%a, %d %b"), name: low.name) %>
+        </span>
+      </div>
+    <% end %>
+
+    <ul class="-mx-1">
+      <% upcoming.rows.group_by(&:date).each do |date, rows| %>
+        <% rows.each_with_index do |row, i| %>
+          <li>
+            <%= link_to bill_path(row.series), class: "flex items-center gap-3 rounded-md px-1 py-2 hover:bg-container-inset" do %>
+              <span class="w-9 shrink-0 text-center leading-tight <%= "invisible" unless i.zero? %>">
+                <span class="block text-sm font-medium <%= row.overdue ? "text-destructive" : "text-primary" %>"><%= date.day %></span>
+                <span class="block text-[10px] uppercase text-secondary"><%= l(date, format: "%a") %></span>
+              </span>
+              <span class="flex-1 min-w-0">
+                <span class="block text-sm truncate"><%= row.name %></span>
+                <span class="block text-[11px] text-secondary">
+                  <% if row.overdue %>
+                    <span class="text-destructive"><%= t(".overdue_since", date: l(row.occurrence.effective_due_on, format: "%d %b")) %></span>
+                  <% elsif row.autopay %>
+                    <%= t(".autopay") %>
+                  <% end %>
+                  <span class="privacy-sensitive"><%= t(".balance_after", amount: format_money(row.balance_after, precision: 0)) %></span>
+                </span>
+              </span>
+              <span class="text-sm font-medium whitespace-nowrap privacy-sensitive <%= row.income ? "text-success" : "text-primary" %>">
+                <%= row.income ? "+" : "−" %><%= format_money(row.amount, precision: 0) %>
+              </span>
+            <% end %>
+          </li>
+        <% end %>
+      <% end %>
+    </ul>
+  <% else %>
+    <div class="py-6 text-center space-y-2">
+      <p class="text-sm text-secondary"><%= t(".empty") %></p>
+      <%= link_to t(".add_bills"), bills_path, class: "text-sm underline text-primary" %>
+    </div>
+  <% end %>
+</div>

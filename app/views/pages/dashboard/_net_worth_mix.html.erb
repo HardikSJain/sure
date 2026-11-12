@@ -1,0 +1,46 @@
+<%# locals: (mix:, **args) %>
+<div id="net-worth-mix" class="px-4 pb-4 space-y-4">
+  <div class="flex flex-wrap items-end justify-between gap-2">
+    <div>
+      <p class="text-xs text-secondary"><%= t(".net_worth") %></p>
+      <p class="text-2xl font-medium privacy-sensitive"><%= format_money(mix.net_worth, precision: 0) %></p>
+    </div>
+    <% if (gain = mix.holdings_gain) %>
+      <p class="text-xs text-secondary text-right">
+        <%= t(".holdings_worth", amount: format_money(mix.holdings_value, precision: 0)) %><br>
+        <span class="font-medium privacy-sensitive <%= gain.negative? ? "text-destructive" : "text-success" %>">
+          <%= t(gain.negative? ? ".below_cost" : ".above_cost", amount: format_money(gain.abs, precision: 0)) %>
+        </span>
+      </p>
+    <% end %>
+  </div>
+
+  <% [ [ :owns, mix.assets, mix.total_assets ], [ :owes, mix.liabilities, mix.total_liabilities ] ].each do |kind, segments, total| %>
+    <% next if segments.empty? %>
+    <div class="space-y-2">
+      <div class="flex items-baseline justify-between text-xs">
+        <span class="font-medium uppercase text-secondary"><%= t(".#{kind}") %></span>
+        <span class="font-medium privacy-sensitive"><%= format_money(total, precision: 0) %></span>
+      </div>
+      <div class="flex h-3 w-full gap-0.5 overflow-hidden rounded-full" role="img"
+           aria-label="<%= segments.map { |s| "#{s.label} #{s.share}%" }.join(", ") %>">
+        <% segments.each do |s| %>
+          <div class="h-full first:rounded-l-full last:rounded-r-full" style="width: <%= s.share %>%; background-color: <%= s.color %>" title="<%= s.label %> · <%= s.share %>%"></div>
+        <% end %>
+      </div>
+      <ul class="space-y-1.5 pt-1">
+        <% segments.each do |s| %>
+          <li class="flex items-center gap-2 text-sm">
+            <span class="w-2 h-2 rounded-full shrink-0" style="background-color: <%= s.color %>"></span>
+            <span class="flex-1 min-w-0 truncate">
+              <%= s.label %>
+              <% if s.detail %><span class="text-xs text-secondary">· <%= s.detail %></span><% end %>
+            </span>
+            <span class="w-12 text-right text-xs text-secondary"><%= number_to_percentage(s.share, precision: s.share < 10 ? 1 : 0) %></span>
+            <span class="w-24 text-right font-medium privacy-sensitive"><%= format_money(s.amount, precision: 0) %></span>
+          </li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+</div>

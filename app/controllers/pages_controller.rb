@@ -13,6 +13,10 @@ class PagesController < ApplicationController
     # masonry can't backfill (dense placement needs a later card short enough
     # to fit beside it, and none is). Users who pair it manually can go half.
     "insights_feed"      => { col_span: "full",   grow: false, min_height: 0, width_toggle: true },
+    "month_pulse"        => { col_span: "full",   grow: false, min_height: 0, width_toggle: true },
+    "spending_calendar"  => { col_span: "full",   grow: false, min_height: 0, width_toggle: true },
+    "upcoming_money"     => { col_span: "single", grow: false, min_height: 0, width_toggle: true },
+    "net_worth_mix"      => { col_span: "single", grow: false, min_height: 0, width_toggle: true },
     "cashflow_sankey"    => { col_span: "full",   grow: false, min_height: 384, width_toggle: true },
     "money_flow"         => { col_span: "single", grow: false, min_height: 0,   width_toggle: true },
     "spending_trend"     => { col_span: "single", grow: true,  min_height: 208, width_toggle: true },
@@ -21,6 +25,12 @@ class PagesController < ApplicationController
     "net_worth_chart"    => { col_span: "single", grow: true,  min_height: 208, width_toggle: true },
     "balance_sheet"      => { col_span: "single", grow: false, min_height: 0, width_toggle: true }
   }.freeze
+
+  # Widgets that answer "how am I doing right now" lead the dashboard the
+  # first time they appear, ahead of a saved order that predates them, the way
+  # the insights feed does. Dragging any widget saves an order that includes
+  # them, and from then on that order wins.
+  LEADING_SECTION_KEYS = %w[insights_feed month_pulse spending_calendar upcoming_money net_worth_mix].freeze
 
   # Number of consecutive months (ending at the selected month) shown as
   # bars in the "money_flow" dashboard widget.
@@ -171,6 +181,50 @@ class PagesController < ApplicationController
     def dashboard_section_builders
       {
         "insights_feed" => -> { insights_feed_section },
+        "month_pulse" => -> {
+          {
+            key: "month_pulse",
+            title: "pages.dashboard.month_pulse.title",
+            partial: "pages/dashboard/month_pulse",
+            layout: section_layout("month_pulse"),
+            locals: { pulse: Dashboard::MonthPulse.new(Current.family, income_statement: dashboard_income_statement, user: Current.user) },
+            visible: @accounts.any?,
+            collapsible: true
+          }
+        },
+        "spending_calendar" => -> {
+          {
+            key: "spending_calendar",
+            title: "pages.dashboard.spending_calendar.title",
+            partial: "pages/dashboard/spending_calendar",
+            layout: section_layout("spending_calendar"),
+            locals: { calendar: Dashboard::SpendingCalendar.new(Current.family, income_statement: dashboard_income_statement) },
+            visible: @accounts.any?,
+            collapsible: true
+          }
+        },
+        "upcoming_money" => -> {
+          {
+            key: "upcoming_money",
+            title: "pages.dashboard.upcoming_money.title",
+            partial: "pages/dashboard/upcoming_money",
+            layout: section_layout("upcoming_money"),
+            locals: { upcoming: Dashboard::UpcomingMoney.new(Current.family) },
+            visible: upcoming_money_available?,
+            collapsible: true
+          }
+        },
+        "net_worth_mix" => -> {
+          {
+            key: "net_worth_mix",
+            title: "pages.dashboard.net_worth_mix.title",
+            partial: "pages/dashboard/net_worth_mix",
+            layout: section_layout("net_worth_mix"),
+            locals: { mix: Dashboard::NetWorthMix.new(Current.family, investment_statement: @investment_statement, balance_sheet: @balance_sheet) },
+            visible: @accounts.any?,
+            collapsible: true
+          }
+        },
         "cashflow_sankey" => -> {
           {
             key: "cashflow_sankey",
@@ -275,6 +329,7 @@ class PagesController < ApplicationController
 
       visible = case key
       when "investment_summary" then investment_summary_available?
+      when "upcoming_money" then upcoming_money_available?
       when "insights_feed" then Current.family.insights.visible.exists?
       else @accounts.any?
       end
@@ -284,6 +339,12 @@ class PagesController < ApplicationController
 
     def investment_summary_available?
       @accounts.any? && @investment_statement.investment_accounts.any?
+    end
+
+    # Bills is a preview feature the family can also switch off; the widget
+    # follows the same gate as the bills pages it links to.
+    def upcoming_money_available?
+      @accounts.any? && preview_features_enabled? && !Current.family.recurring_transactions_disabled?
     end
 
     # Use IncomeStatement for all cashflow data (now includes categorized trades)
@@ -347,7 +408,8 @@ class PagesController < ApplicationController
       keys = dashboard_section_builders.keys
       saved = Current.user.dashboard_section_order & keys
       unsaved = keys - saved
-      (unsaved & %w[insights_feed]) + saved + (unsaved - %w[insights_feed])
+      leading = unsaved & LEADING_SECTION_KEYS
+      leading + saved + (unsaved - leading)
     end
 
     # Resolves a section's layout guardrails, applying the user's height preset

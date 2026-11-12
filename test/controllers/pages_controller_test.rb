@@ -245,7 +245,7 @@ class PagesControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "dashboard skips the data queries of hidden widgets" do
-    %w[cashflow_sankey outflows_donut money_flow spending_trend].each { |key| @user.update_dashboard_section_hidden(key, true) }
+    %w[cashflow_sankey outflows_donut money_flow spending_trend month_pulse spending_calendar].each { |key| @user.update_dashboard_section_hidden(key, true) }
     IncomeStatement.any_instance.expects(:income_totals).never
     IncomeStatement.any_instance.expects(:expense_totals).never
     IncomeStatement.any_instance.expects(:net_category_totals).never
@@ -258,6 +258,28 @@ class PagesControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :ok
     assert_select "section[data-section-key='net_worth_chart']"
+  end
+
+  test "dashboard leads with the month pulse, spending calendar and net worth mix" do
+    @user.update!(preferences: (@user.preferences || {}).merge("section_order" => %w[cashflow_sankey balance_sheet]))
+
+    get root_path
+
+    assert_response :ok
+    keys = css_select("section[data-section-key]").map { |section| section["data-section-key"] }
+    assert_equal %w[month_pulse spending_calendar net_worth_mix], keys.first(3)
+    assert_select "#month-pulse"
+    assert_select "#spending-calendar"
+    assert_select "#net-worth-mix"
+  end
+
+  test "next 30 days widget follows the bills preview gate" do
+    get root_path
+    assert_select "section[data-section-key='upcoming_money']", count: 0
+
+    @user.update!(preferences: (@user.preferences || {}).merge("preview_features_enabled" => true))
+    get root_path
+    assert_select "section[data-section-key='upcoming_money']"
   end
 
   test "update_section_hidden rejects unknown sections" do
@@ -278,6 +300,9 @@ class PagesControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "dashboard memoizes income statement period totals while rendering" do
+    # The month pulse and the calendar read their own periods (month to date,
+    # the last 26 weeks); this checks the dashboard period's totals alone.
+    %w[month_pulse spending_calendar].each { |key| @user.update_dashboard_section_hidden(key, true) }
     income_statement = IncomeStatement.new(@family)
     IncomeStatement.stubs(:new).returns(income_statement)
 

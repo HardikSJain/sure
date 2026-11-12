@@ -1,0 +1,115 @@
+<%# locals: (pulse:, **args) %>
+<%# Against recent months only once the month's statements are all in; a partial month reads as thrifty. %>
+<% vs_usual = pulse.up_to_date? ? pulse.vs_usual : nil %>
+<div id="month-pulse" class="px-4 pb-4 space-y-4">
+  <div class="flex flex-wrap items-center justify-between gap-2">
+    <p class="text-sm text-secondary">
+      <span class="font-medium text-primary"><%= pulse.month_label %></span>
+      · <%= t(".day_of", day: pulse.day_of_month, days: pulse.days_in_month) %>
+      · <%= t(".days_left", count: pulse.days_left) %>
+    </p>
+    <% if vs_usual %>
+      <% less = vs_usual <= 0 %>
+      <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium <%= less ? "bg-success/10 text-success" : "bg-warning/10 text-warning" %>"
+            title="<%= t(".vs_usual_hint", months: Dashboard::MonthPulse::HISTORY_MONTHS, amount: format_money(pulse.usual_by_today, precision: 0)) %>">
+        <%= icon(less ? "trending-down" : "trending-up", size: "xs", color: "current") %>
+        <%= less ? t(".less_than_usual", percent: vs_usual.abs) : t(".more_than_usual", percent: vs_usual) %>
+      </span>
+    <% end %>
+  </div>
+
+  <% if pulse.stale_accounts.any? %>
+    <div class="flex items-start gap-2 rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning">
+      <%= icon("clock", size: "xs", color: "current", class: "mt-0.5") %>
+      <p>
+        <span class="font-medium"><%= t(".incomplete") %></span>
+        <%= safe_join(pulse.stale_accounts.map { |s| t(".imported_until", name: s.account.name, date: l(s.last_date, format: "%d %b")) }, " · ") %>
+      </p>
+    </div>
+  <% end %>
+
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+    <% [
+         [ "earned", pulse.income, "text-success", nil ],
+         [ "spent", pulse.spent, "text-primary", pulse.usual_by_today && t(".usual_by_now", amount: format_money(pulse.usual_by_today, precision: 0)) ],
+         [ "invested", pulse.invested, "text-primary", pulse.invest_rate && t(".of_income", percent: pulse.invest_rate) ],
+         [ "kept", pulse.kept, pulse.kept.negative? ? "text-destructive" : "text-primary", pulse.kept_rate && t(".of_income", percent: pulse.kept_rate) ]
+       ].each do |key, amount, tone, note| %>
+      <div class="rounded-xl bg-container-inset p-3 space-y-1">
+        <p class="text-xs font-medium uppercase text-secondary"><%= t(".#{key}") %></p>
+        <p class="text-xl lg:text-2xl font-medium <%= tone %> privacy-sensitive"><%= format_money(amount, precision: 0) %></p>
+        <p class="text-xs text-secondary min-h-4 privacy-sensitive"><%= note %></p>
+      </div>
+    <% end %>
+  </div>
+
+  <% if pulse.budget %>
+    <% pct = pulse.budget_percent %>
+    <% fill = pulse.over_budget? ? "bg-destructive" : (pulse.ahead_of_pace? ? "bg-warning" : "bg-success") %>
+    <div class="bg-container-inset rounded-xl p-1">
+      <div class="bg-container rounded-lg shadow-border-xs p-4 space-y-3">
+        <div class="flex flex-wrap items-baseline justify-between gap-2">
+          <p class="text-sm">
+            <span class="font-medium"><%= t(".budget") %></span>
+            <span class="text-secondary privacy-sensitive">
+              <%= t(".budget_used", spent: format_money(pulse.budget_spent, precision: 0), budgeted: format_money(pulse.budgeted, precision: 0)) %>
+            </span>
+          </p>
+          <p class="text-sm font-medium privacy-sensitive <%= pulse.over_budget? ? "text-destructive" : "text-primary" %>">
+            <% if pulse.over_budget? %>
+              <%= t(".over_by", amount: format_money(pulse.budget_spent - pulse.budgeted, precision: 0)) %>
+            <% else %>
+              <%= t(".per_day_left", amount: format_money(pulse.daily_allowance, precision: 0)) %>
+            <% end %>
+          </p>
+        </div>
+
+        <div class="relative pt-4" role="img" aria-label="<%= t(".pace_aria", percent: pct.round, progress: pulse.month_progress.round) %>">
+          <div class="absolute top-0 -translate-x-1/2 text-[10px] leading-3 text-secondary whitespace-nowrap" style="left: <%= pulse.month_progress %>%">
+            <%= t(".today") %>
+          </div>
+          <div class="h-2.5 rounded-full bg-surface-inset overflow-hidden">
+            <div class="h-full rounded-full <%= fill %>" style="width: <%= [ pct, 100 ].min %>%"></div>
+          </div>
+          <div class="absolute top-3.5 bottom-[-2px] w-0.5 rounded bg-inverse opacity-70" style="left: calc(<%= pulse.month_progress %>% - 1px)"></div>
+        </div>
+
+        <p class="text-xs text-secondary privacy-sensitive">
+          <% if pulse.over_budget? %>
+            <%= t(".over_note") %>
+          <% elsif pulse.ahead_of_pace? %>
+            <%= t(".ahead_note", amount: format_money(pulse.budget_spent - pulse.on_pace_amount, precision: 0)) %>
+          <% else %>
+            <%= t(".behind_note", amount: format_money(pulse.on_pace_amount - pulse.budget_spent, precision: 0)) %>
+          <% end %>
+        </p>
+
+        <% if pulse.category_paces.any? %>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 pt-1">
+            <% pulse.category_paces.each do |c| %>
+              <div class="space-y-1.5">
+                <div class="flex items-center justify-between gap-2 text-sm">
+                  <span class="flex items-center gap-2 min-w-0">
+                    <span class="w-2 h-2 rounded-full shrink-0" style="background-color: <%= c.color %>"></span>
+                    <span class="truncate"><%= c.name %></span>
+                  </span>
+                  <span class="text-secondary privacy-sensitive whitespace-nowrap">
+                    <%= format_money(c.spent, precision: 0) %> / <%= format_money(c.budgeted, precision: 0) %>
+                  </span>
+                </div>
+                <div class="h-1.5 rounded-full bg-surface-inset overflow-hidden">
+                  <div class="h-full rounded-full <%= c.over ? "bg-destructive" : "" %>" style="width: <%= [ c.percent, 100 ].min %>%; <%= "background-color: #{c.color}" unless c.over %>"></div>
+                </div>
+              </div>
+            <% end %>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  <% else %>
+    <p class="text-sm text-secondary">
+      <%= t(".no_budget") %>
+      <%= link_to t(".set_budget"), budgets_path, class: "underline text-primary" %>
+    </p>
+  <% end %>
+</div>
