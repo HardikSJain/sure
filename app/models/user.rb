@@ -678,6 +678,26 @@ class User < ApplicationRecord
   # current preferences (re-read under a row lock) to change in place, then
   # saves it, so concurrent updates of other keys are not lost. Attributes set
   # on the user inside the block are saved with it.
+  # The least a bank account should hold (the room forecast warns below it).
+  # Per account, in the account's currency; 0 when never set.
+  def cash_floor(account)
+    BigDecimal(preferences&.dig("cash_floors", account.id.to_s).presence || "0")
+  end
+
+  # Blank or negative clears the floor.
+  def update_cash_floor!(account, amount)
+    value = amount.to_s.strip.presence && BigDecimal(amount.to_s)
+    with_locked_preferences do |prefs|
+      floors = prefs["cash_floors"] || {}
+      if value&.positive?
+        floors[account.id.to_s] = value.to_s("F")
+      else
+        floors.delete(account.id.to_s)
+      end
+      prefs["cash_floors"] = floors
+    end
+  end
+
   def with_locked_preferences
     transaction do
       lock!

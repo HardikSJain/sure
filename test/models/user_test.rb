@@ -1678,4 +1678,21 @@ class UserTest < ActiveSupport::TestCase
     assert_not @user.update_manual_account_order("transactions", [ accounts(:depository).id ])
     assert_equal({}, @user.reload.manual_account_order)
   end
+
+  test "cash floor defaults to zero and is stored per account" do
+    account = accounts(:depository)
+    assert_equal 0, @user.cash_floor(account)
+
+    @user.update_cash_floor!(account, 2000)
+    assert_equal 2000, @user.reload.cash_floor(account)
+
+    @user.update_cash_floor!(account, "")
+    assert_equal 0, @user.reload.cash_floor(account)
+  end
+
+  test "a negative cash floor clears it" do
+    @user.update_cash_floor!(accounts(:depository), -5)
+    assert_equal 0, @user.reload.cash_floor(accounts(:depository))
+  end
+
 end
