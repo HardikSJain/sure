@@ -92,6 +92,37 @@ class CashForecastTest < ActiveSupport::TestCase
     assert_not_includes accounts, idle
   end
 
+  test "each stretch until a payday is a cycle: short, tight or fine, by how far the low sits from the floor" do
+    create_series(@bank, name: "Rent", amount: 900, due: @known + 5)
+    create_series(@bank, name: "Salary", amount: -2000, due: @known + 6, bill_type: "income")
+    @user.update_cash_floor!(@bank, 200)
+
+    short, after = forecast.cycles.first(2)
+    assert_equal [ @known + 1, @known + 6, :short, -100 ], [ short.starts_on, short.payday, short.status, short.room ]
+    assert_equal @known + 6, after.starts_on
+    assert_includes %i[ok tight short], after.status
+  end
+
+  test "with no payday there is one cycle for the whole forecast" do
+    create_series(@bank, name: "Rent", amount: 300, due: @known + 10)
+
+    cycle = forecast.cycles.sole
+    assert_nil cycle.payday
+    assert_equal :ok, cycle.status
+  end
+
+  test "the steps up to a date carry the balance after each one, everyday spending taken first" do
+    spend(@bank, 900, date: @known - 1) # 10 a day
+    create_series(@bank, name: "Rent", amount: 300, due: @known + 3)
+    create_series(@bank, name: "Phone", amount: 50, due: @known + 3)
+
+    steps = forecast.steps(through: @known + 3)
+    assert_equal [ "Phone", "Rent" ], steps.map { |s| s.event.name }
+    assert_in_delta 1000 - 30 - 50, steps.first.balance_after, 0.01
+    assert_in_delta 1000 - 30 - 350, steps.last.balance_after, 0.01
+    assert_in_delta 30, forecast.everyday_total(through: @known + 3), 0.01
+  end
+
   private
     def forecast
       CashForecast.new(@bank, user: @user)

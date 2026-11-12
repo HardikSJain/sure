@@ -33,7 +33,8 @@ class BillsControllerTest < ActionDispatch::IntegrationTest
     assert_select "#room-forecast-#{bank.id}" do
       assert_select "[data-room-forecast-tight]"
       assert_select "form[action='#{account_cash_floor_path(bank)}']"
-      assert_select "svg"
+      assert_select "[data-cycle-status='short']", text: / short/
+      assert_select "[data-controller='room-forecast-chart'] svg"
     end
   end
 

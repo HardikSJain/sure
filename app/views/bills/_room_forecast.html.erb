@@ -3,30 +3,47 @@
   account = forecast.account
   currency = account.currency
   money = ->(amount) { format_money(Money.new(amount, currency), precision: 0) }
+  day_label = ->(date) { l(date, format: "%a, %-d %b") }
   floor = forecast.floor
-  lows = forecast.low_points
-  focus = forecast.first_tight || lows.min_by(&:balance)
-  tight = forecast.first_tight
-  later = lows.select { |low| tight && low.date > tight.date && (low.under_floor || low.near_floor) }
+  paid_cycles = forecast.cycles.select(&:payday)
+  cycles = paid_cycles.presence || forecast.cycles.first(1)
+  focus = cycles.find { |c| c.status == :short } || cycles.find { |c| c.status == :tight } || cycles.first
+  low = focus&.low_point
+  suggestions = forecast.suggestions
+  moves = suggestions.select { |s| s.kind == :move_due_date }
+  others = suggestions.select { |s| s.kind.in?(%i[receivable income_dependency]) }
+  heads_up = suggestions.select { |s| s.kind == :wallet_top_up }
 
-  # Step chart of the balance, from the last-known day through the horizon.
-  w, h, left, right, top, bottom = 760.0, 236.0, 52.0, 750.0, 22.0, 206.0
-  points = [ [ forecast.last_known_date, forecast.starting_balance ] ] + forecast.days.map { |d| [ d.date, d.balance ] }
-  values = points.map(&:last) + [ floor, 0 ]
-  lo = values.min.to_f
-  hi = [ values.max.to_f * 1.08, lo + 1 ].max
-  span = (forecast.end_date - forecast.last_known_date).to_f
+  # Chart geometry (viewBox units): balance per day, floor zone, salary lines.
+  w, h, left, right, top, bottom = 760.0, 250.0, 56.0, 748.0, 18.0, 218.0
+  days = forecast.days
+  points = [ [ forecast.last_known_date, forecast.starting_balance ] ] + days.map { |d| [ d.date, d.balance ] }
+  lo = [ points.map(&:last).min.to_f, 0 ].min
+  top_value = [ points.map(&:last).max.to_f, floor.to_f ].max
+  step = [ 10_000, 20_000, 25_000, 50_000, 100_000, 200_000, 500_000, 1_000_000 ].find { |s| (top_value - lo) / s <= 4 } || 2_000_000
+  hi = ((top_value / step).floor + 1) * step
+  span = [ (forecast.end_date - forecast.last_known_date).to_f, 1 ].max
   x = ->(date) { (left + (date - forecast.last_known_date) / span * (right - left)).round(1) }
   y = ->(v) { (bottom - (v.to_f - lo) / (hi - lo) * (bottom - top)).round(1) }
-  path = +"M#{x.(points.first[0])},#{y.(points.first[1])}"
-  points.drop(1).each { |date, balance| path << " H#{x.(date)} V#{y.(balance)}" }
-  ticks = [ forecast.last_known_date ] + (forecast.last_known_date.next_month.beginning_of_month..forecast.end_date).select { |d| d.day == 1 }
-  balance_on = forecast.days.index_by(&:date)
+  line = +"M#{x.(points.first[0])},#{y.(points.first[1])}"
+  points.drop(1).each { |date, balance| line << " H#{x.(date)} V#{y.(balance)}" }
+  area = "#{line} V#{y.(lo)} H#{x.(points.first[0])} Z"
+  y_ticks = (lo.to_i..hi.to_i).step(step).to_a
+  x_ticks = ((forecast.last_known_date + 1)..forecast.end_date).select { |d| d.day == 1 }
+  short_unit = ->(v) { v.abs >= 100_000 ? "#{(v / 100_000.0).round(1).to_s.delete_suffix(".0")}L" : (v.zero? ? "0" : "#{(v / 1000.0).round}k") }
+  tooltip_days = days.map do |d|
+    { x: x.(d.date), y: y.(d.balance), date: day_label.(d.date), balance: money.(d.balance), under: d.balance < floor,
+      events: d.events.map { |e| "#{e.name} #{e.inflow? ? "+" : "−"}#{money.(e.amount.abs)}" } }
+  end
 %>
-<section id="room-forecast-<%= account.id %>" class="bg-container rounded-xl shadow-border-xs p-4 space-y-4"
-         <%= "data-room-forecast-tight" if tight %>>
-  <div class="flex flex-wrap items-center justify-between gap-2">
-    <h2 class="text-base font-medium text-primary"><%= t(".title", account: account.name) %></h2>
+<section id="room-forecast-<%= account.id %>" class="bg-container rounded-xl shadow-border-xs p-4 lg:p-5 space-y-5"
+         <%= "data-room-forecast-tight" if forecast.tight? %>>
+  <%# Header: what this is, which account, how fresh, and the floor. %>
+  <div class="flex flex-wrap items-start justify-between gap-3">
+    <div class="space-y-0.5">
+      <h2 class="text-base font-medium text-primary"><%= t(".title") %></h2>
+      <p class="text-xs text-secondary"><%= t(".subtitle", account: account.name, date: l(forecast.last_known_date, format: "%-d %b")) %></p>
+    </div>
     <details class="relative">
       <summary class="focus-ring list-none cursor-pointer text-xs rounded-full bg-container-inset px-3 py-1.5 text-secondary hover:text-primary [&::-webkit-details-marker]:hidden">
         <%= floor.positive? ? t(".keep_at_least_html", amount: money.(floor)) : t(".set_floor") %>
@@ -35,118 +52,161 @@
       <%= form_with url: account_cash_floor_path(account), method: :patch, class: "absolute right-0 top-full mt-1.5 z-10 w-64 p-3 space-y-2 bg-surface rounded-xl shadow-border-xs border border-primary" do |f| %>
         <%= f.label "cash_floor[amount]", t(".floor_label", account: account.name), class: "block text-xs text-secondary" %>
         <div class="flex gap-2">
-          <%= f.number_field "cash_floor[amount]", value: floor.positive? ? floor.to_i : nil, min: 0, step: 1, class: "form-field__input w-full text-sm rounded-lg border border-secondary px-2 py-1 bg-container" %>
+          <%= f.number_field "cash_floor[amount]", value: floor.positive? ? floor.to_i : nil, min: 0, step: 1, class: "w-full text-sm rounded-lg border border-secondary px-2 py-1 bg-container" %>
           <%= f.submit t(".save"), class: "text-xs rounded-lg bg-inverse text-inverse px-3" %>
         </div>
       <% end %>
     </details>
   </div>
 
-  <% if tight %>
-    <div class="flex items-start gap-3 rounded-xl bg-destructive/5 px-4 py-3" role="status">
-      <%= icon("triangle-alert", size: "sm", color: "destructive", class: "mt-0.5") %>
-      <div class="space-y-1 text-sm">
-        <p class="text-primary privacy-sensitive">
-          <% if floor.positive? %>
-            <%= t(".tight_html", date: l(tight.date, format: "%-d %b"), account: account.name, balance: money.(tight.balance), gap: money.(floor - tight.balance), floor: money.(floor)) %>
-          <% else %>
-            <%= t(".tight_no_floor_html", date: l(tight.date, format: "%-d %b"), account: account.name, balance: money.(tight.balance)) %>
-          <% end %>
-          <% later.first(1).each do |low| %>
-            <%= low.under_floor ? t(".then_tight", date: l(low.date, format: "%-d %b"), balance: money.(low.balance)) : t(".then_near", date: l(low.date, format: "%-d %b"), balance: money.(low.balance)) %>
-          <% end %>
+  <%# The answer, one card per stretch until a salary. %>
+  <div class="grid grid-cols-1 <%= cycles.size > 1 ? "sm:grid-cols-2" : "" %> <%= cycles.size > 2 ? "lg:grid-cols-3" : "" %> gap-3">
+    <% cycles.each do |cycle| %>
+      <% card = { short: "bg-destructive/5", tight: "bg-warning/10", ok: "bg-container-inset" }.fetch(cycle.status) %>
+      <% headline = { short: "text-destructive", tight: "text-warning", ok: "text-primary" }.fetch(cycle.status) %>
+      <div class="rounded-xl px-4 py-3 space-y-1 <%= card %>" data-cycle-status="<%= cycle.status %>">
+        <p class="flex items-center gap-1.5 text-xs text-secondary">
+          <%= icon(cycle.status == :ok ? "circle-check" : "triangle-alert", size: "xs", color: { short: "destructive", tight: "warning", ok: "success" }.fetch(cycle.status)) %>
+          <%= cycle.payday ? t(".until_payday", date: l(cycle.payday, format: "%-d %b")) : t(".whole_forecast", count: (forecast.end_date - forecast.last_known_date).to_i) %>
         </p>
-        <% if forecast.suggestions.any? { |s| s.kind == :move_due_date } %>
-          <p class="text-xs text-destructive"><%= t(".cause_due_before_payday") %></p>
+        <p class="text-2xl font-medium privacy-sensitive <%= headline %>">
+          <%= cycle.status == :short ? t(".short", amount: money.(-cycle.room)) : t(".to_spare", amount: money.(cycle.room)) %>
+        </p>
+        <p class="text-xs text-secondary privacy-sensitive">
+          <%= t(".lowest_on", balance: money.(cycle.low_point.balance), date: day_label.(cycle.low_point.date)) %>
+        </p>
+      </div>
+    <% end %>
+  </div>
+
+  <%# The balance, day by day. Hover a day for its balance and what happens. %>
+  <div class="relative space-y-1" data-controller="room-forecast-chart" data-room-forecast-chart-days-value="<%= tooltip_days.to_json %>"
+       data-action="pointermove->room-forecast-chart#move pointerleave->room-forecast-chart#hide">
+    <svg viewBox="0 0 <%= w.to_i %> <%= h.to_i %>" class="w-full h-auto select-none" data-room-forecast-chart-target="svg" role="img"
+         aria-label="<%= t(".chart_aria", account: account.name, start: l(forecast.last_known_date, format: "%-d %b"), finish: l(forecast.end_date, format: "%-d %b"), low: low ? money.(low.balance) : "", low_date: low ? l(low.date, format: "%-d %b") : "") %>">
+      <% y_ticks.each do |v| %>
+        <line x1="<%= left %>" x2="<%= right %>" y1="<%= y.(v) %>" y2="<%= y.(v) %>" stroke="currentColor" stroke-opacity="<%= v.zero? ? ".18" : ".07" %>" />
+        <text x="<%= left - 8 %>" y="<%= y.(v) + 4 %>" text-anchor="end" font-size="11" fill="currentColor" fill-opacity=".45" class="privacy-sensitive"><%= short_unit.(v) %></text>
+      <% end %>
+      <% x_ticks.each do |date| %>
+        <text x="<%= x.(date) %>" y="<%= h - 10 %>" text-anchor="middle" font-size="11" fill="currentColor" fill-opacity=".45"><%= l(date, format: "%-d %b") %></text>
+      <% end %>
+      <% if floor.positive? %>
+        <rect x="<%= left %>" y="<%= y.(floor) %>" width="<%= right - left %>" height="<%= (y.(lo) - y.(floor)).clamp(0, h) %>" fill="var(--color-red-500)" fill-opacity=".06" />
+        <line x1="<%= left %>" x2="<%= right %>" y1="<%= y.(floor) %>" y2="<%= y.(floor) %>" stroke="var(--color-red-500)" stroke-width="1.2" stroke-dasharray="6 5" />
+      <% end %>
+      <% forecast.paydays.each do |date| %>
+        <line x1="<%= x.(date) %>" x2="<%= x.(date) %>" y1="<%= top %>" y2="<%= bottom %>" stroke="var(--color-green-500)" stroke-opacity=".5" stroke-dasharray="2 4" />
+        <text x="<%= x.(date) + 4 %>" y="<%= top + 10 %>" font-size="10" fill="var(--color-green-500)"><%= t(".salary_mark") %></text>
+      <% end %>
+      <path d="<%= area %>" fill="var(--color-green-500)" fill-opacity=".07" />
+      <path d="<%= line %>" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
+      <% forecast.events.select { |e| e.kind == :top_up }.each do |e| %>
+        <% if (day = days.find { |d| d.date == e.date }) %><circle cx="<%= x.(e.date) %>" cy="<%= y.(day.balance) %>" r="4" fill="var(--color-violet-500)" /><% end %>
+      <% end %>
+      <% cycles.reject { |c| c.status == :ok }.each do |cycle| %>
+        <% point = cycle.low_point %>
+        <% color = cycle.status == :short ? "var(--color-red-500)" : "var(--color-yellow-500)" %>
+        <circle cx="<%= x.(point.date) %>" cy="<%= y.(point.balance) %>" r="8" fill="<%= color %>" fill-opacity=".2" />
+        <circle cx="<%= x.(point.date) %>" cy="<%= y.(point.balance) %>" r="4" fill="<%= color %>" />
+      <% end %>
+      <circle cx="<%= x.(forecast.last_known_date) %>" cy="<%= y.(forecast.starting_balance) %>" r="4" fill="var(--color-white)" stroke="currentColor" stroke-width="2" />
+      <line class="hidden" data-room-forecast-chart-target="guide" y1="<%= top %>" y2="<%= bottom %>" stroke="currentColor" stroke-opacity=".3" />
+      <circle class="hidden" data-room-forecast-chart-target="dot" r="4.5" fill="currentColor" />
+    </svg>
+    <div class="pointer-events-none absolute top-0 z-10 hidden w-56 -translate-x-1/2 rounded-lg bg-container shadow-border-xs border border-primary p-2.5 text-xs space-y-1"
+         data-room-forecast-chart-target="tooltip" role="tooltip">
+      <div class="flex justify-between gap-2"><span class="font-medium" data-room-forecast-chart-target="date"></span><span class="font-medium privacy-sensitive" data-room-forecast-chart-target="balance"></span></div>
+      <ul class="text-secondary space-y-0.5 privacy-sensitive" data-room-forecast-chart-target="events"></ul>
+    </div>
+    <div class="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-secondary pl-14" aria-hidden="true">
+      <% if floor.positive? %><span class="flex items-center gap-1.5"><span class="w-3 border-t-2 border-dashed" style="border-color: var(--color-red-500)"></span><%= t(".legend_floor", amount: money.(floor)) %></span><% end %>
+      <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full" style="background: var(--color-green-500)"></span><%= t(".legend_salary") %></span>
+      <% if forecast.events.any? { |e| e.kind == :top_up } %><span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full" style="background: var(--color-violet-500)"></span><%= t(".legend_top_up") %></span><% end %>
+      <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full" style="background: var(--color-red-500)"></span><%= t(".legend_low") %></span>
+    </div>
+  </div>
+
+  <% if low && focus.status != :ok %>
+    <% steps = forecast.steps(through: low.date).select { |s| s.date >= focus.starts_on } %>
+    <% start_balance = focus.starts_on - 1 <= forecast.last_known_date ? forecast.starting_balance : days.find { |d| d.date == focus.starts_on - 1 }&.balance %>
+    <% stretch_days = (low.date - focus.starts_on + 1).to_i %>
+    <% everyday = forecast.daily_spend * stretch_days %>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <%# Why it gets tight: each step with the balance after it. %>
+      <div class="space-y-2">
+        <h3 class="text-sm font-medium"><%= t(".why_title", date: l(low.date, format: "%-d %b")) %></h3>
+        <ol class="text-sm">
+          <li class="flex items-baseline gap-3 py-1.5 text-secondary">
+            <span class="w-12 shrink-0 text-xs"><%= l(focus.starts_on - 1, format: "%-d %b") %></span>
+            <span class="flex-1"><%= t(".balance_then") %></span>
+            <span class="w-24 text-right font-medium text-primary privacy-sensitive"><%= money.(start_balance) %></span>
+          </li>
+          <% steps.each do |step| %>
+            <% e = step.event %>
+            <li class="flex items-baseline gap-3 py-1.5 border-t border-secondary">
+              <span class="w-12 shrink-0 text-xs text-secondary"><%= l(step.date, format: "%-d %b") %></span>
+              <span class="flex-1 min-w-0">
+                <span class="block truncate"><%= e.name %></span>
+                <% note = e.estimate ? t(".note_estimate") : { pending: t(".note_pending"), top_up: t(".note_top_up") }[e.kind] %>
+                <% if note %><span class="block text-[11px] text-warning"><%= note %></span><% end %>
+              </span>
+              <span class="w-20 text-right font-medium whitespace-nowrap privacy-sensitive <%= "text-success" if e.inflow? %>"><%= e.inflow? ? "+" : "−" %><%= money.(e.amount.abs) %></span>
+              <span class="w-20 text-right text-xs text-secondary whitespace-nowrap privacy-sensitive"><%= money.(step.balance_after) %></span>
+            </li>
+          <% end %>
+          <% if everyday.positive? %>
+            <li class="flex items-baseline gap-3 py-1.5 border-t border-secondary">
+              <span class="w-12 shrink-0 text-xs text-secondary"><%= t(".everyday_when") %></span>
+              <span class="flex-1"><%= t(".everyday", days: stretch_days, amount: money.(forecast.daily_spend)) %></span>
+              <span class="w-20 text-right font-medium privacy-sensitive">−<%= money.(everyday) %></span>
+              <span class="w-20"></span>
+            </li>
+          <% end %>
+          <li class="flex items-baseline gap-3 py-2 border-t border-primary">
+            <span class="w-12 shrink-0 text-xs text-secondary"><%= l(low.date, format: "%-d %b") %></span>
+            <span class="flex-1 font-medium"><%= t(".lowest_point") %></span>
+            <span class="w-20 text-right font-medium privacy-sensitive <%= focus.status == :short ? "text-destructive" : "text-warning" %>"><%= money.(low.balance) %></span>
+            <span class="w-20"></span>
+          </li>
+        </ol>
+      </div>
+
+      <%# How to make room: the lasting fix first, then this month's options. %>
+      <div class="space-y-3">
+        <h3 class="text-sm font-medium"><%= t(".fix_title") %></h3>
+        <% if moves.any? && focus.payday %>
+          <% moved = moves.sum(&:amount) %>
+          <div class="rounded-xl border border-primary p-4 space-y-2" data-fix="move-due-dates">
+            <p class="text-[11px] font-medium uppercase tracking-wide text-success"><%= t(".fix_for_good") %></p>
+            <p class="font-medium"><%= t(".move_due_dates", day: focus.payday.day.ordinalize) %></p>
+            <div class="flex flex-wrap gap-1.5">
+              <% moves.each do |s| %>
+                <span class="rounded-full bg-container-inset px-2 py-0.5 text-xs privacy-sensitive"><%= s.name %> · <%= money.(s.amount) %> · <%= l(s.date, format: "%-d %b") %></span>
+              <% end %>
+            </div>
+            <p class="text-xs text-secondary privacy-sensitive"><%= t(".move_due_dates_body", amount: money.(moved), date: l(focus.payday, format: "%-d %b")) %></p>
+            <p class="text-sm font-medium text-success privacy-sensitive"><%= t(".lowest_would_be", balance: money.(low.balance + moved)) %></p>
+          </div>
+        <% end %>
+        <% others.each do |s| %>
+          <div class="rounded-xl px-4 py-3 space-y-0.5 <%= s.kind == :income_dependency ? "bg-warning/10" : "bg-container-inset" %>">
+            <% if s.kind == :receivable %>
+              <p class="text-sm font-medium privacy-sensitive"><%= t(".receivable", name: s.name, amount: money.(s.amount)) %></p>
+              <p class="text-xs text-secondary privacy-sensitive"><%= t(".lowest_would_be", balance: money.(s.balance_if)) %></p>
+            <% else %>
+              <p class="text-sm font-medium privacy-sensitive"><%= t(".counting_on", name: s.name, amount: money.(s.amount), date: l(s.date, format: "%-d %b")) %></p>
+              <p class="text-xs text-secondary privacy-sensitive"><%= t(".if_late", balance: money.(s.balance_if)) %></p>
+            <% end %>
+          </div>
+        <% end %>
+        <% heads_up.each do |s| %>
+          <p class="flex items-start gap-2 text-xs text-secondary privacy-sensitive">
+            <%= icon("info", size: "xs", class: "mt-0.5") %>
+            <span><%= t(".heads_up", name: s.name.delete_prefix("Top up "), amount: money.(s.amount), date: l(s.date, format: "%-d %b")) %></span>
+          </p>
         <% end %>
       </div>
-    </div>
-  <% elsif focus %>
-    <p class="text-sm text-secondary privacy-sensitive">
-      <%= t(focus.near_floor ? ".near" : (floor.positive? ? ".room_with_floor" : ".room"),
-            date: l(focus.date, format: "%-d %b"), balance: money.(focus.balance), floor: money.(floor)) %>
-    </p>
-  <% end %>
-
-  <svg viewBox="0 0 <%= w.to_i %> <%= h.to_i %>" class="w-full h-auto" role="img"
-       aria-label="<%= t(".chart_aria", account: account.name, start: l(forecast.last_known_date, format: "%-d %b"), finish: l(forecast.end_date, format: "%-d %b"), low: focus ? money.(focus.balance) : "", low_date: focus ? l(focus.date, format: "%-d %b") : "") %>">
-    <line x1="<%= left %>" x2="<%= right %>" y1="<%= y.(0) %>" y2="<%= y.(0) %>" stroke="currentColor" stroke-opacity=".12" />
-    <% if floor.positive? %>
-      <rect x="<%= left %>" y="<%= y.(floor) %>" width="<%= right - left %>" height="<%= (y.(lo) - y.(floor)).clamp(0, h) %>" fill="var(--color-red-500)" fill-opacity=".06" />
-      <line x1="<%= left %>" x2="<%= right %>" y1="<%= y.(floor) %>" y2="<%= y.(floor) %>" stroke="var(--color-red-500)" stroke-width="1.2" stroke-dasharray="6 5" />
-      <text x="<%= left + 4 %>" y="<%= y.(floor) - 5 %>" font-size="11" fill="var(--color-red-500)" class="privacy-sensitive"><%= t(".floor_line", amount: money.(floor)) %></text>
-    <% end %>
-    <% ticks.each do |date| %>
-      <text x="<%= x.(date) %>" y="<%= h - 6 %>" text-anchor="middle" font-size="11" fill="currentColor" fill-opacity=".45"><%= l(date, format: "%-d %b") %></text>
-    <% end %>
-    <path d="<%= path %>" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
-    <circle cx="<%= x.(forecast.last_known_date) %>" cy="<%= y.(forecast.starting_balance) %>" r="4" fill="var(--color-white)" stroke="currentColor" stroke-width="2" />
-    <% forecast.paydays.each do |date| %>
-      <% if (day = balance_on[date]) %><circle cx="<%= x.(date) %>" cy="<%= y.(day.balance) %>" r="4" fill="var(--color-green-500)"><title><%= t(".payday") %> <%= l(date, format: "%-d %b") %></title></circle><% end %>
-    <% end %>
-    <% forecast.events.select { |e| e.kind == :top_up }.each do |e| %>
-      <% if (day = balance_on[e.date]) %><circle cx="<%= x.(e.date) %>" cy="<%= y.(day.balance) %>" r="4" fill="var(--color-violet-500)"><title><%= e.name %></title></circle><% end %>
-    <% end %>
-    <% lows.select { |low| low.under_floor || low.near_floor }.each do |low| %>
-      <% color = low.under_floor ? "var(--color-red-500)" : "var(--color-yellow-500)" %>
-      <% cx = x.(low.date) %>
-      <circle cx="<%= cx %>" cy="<%= y.(low.balance) %>" r="9" fill="<%= color %>" fill-opacity=".18" />
-      <circle cx="<%= cx %>" cy="<%= y.(low.balance) %>" r="4.5" fill="<%= color %>" />
-      <g transform="translate(<%= (cx - 46).clamp(left, right - 92) %> <%= [ y.(low.balance) - 32, top ].max %>)">
-        <rect width="92" height="20" rx="10" fill="<%= color %>" />
-        <text x="46" y="14" text-anchor="middle" font-size="11" fill="white" class="privacy-sensitive"><%= money.(low.balance) %> · <%= l(low.date, format: "%-d %b") %></text>
-      </g>
-    <% end %>
-  </svg>
-
-  <% if focus %>
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <div class="space-y-1">
-        <p class="text-xs text-secondary"><%= t(".up_to_low", date: l(focus.date, format: "%-d %b")) %></p>
-        <ul class="text-sm divide-y divide-gray-100">
-          <li class="flex items-baseline justify-between gap-3 py-1.5">
-            <span class="w-14 shrink-0 text-xs text-secondary"><%= l(forecast.last_known_date, format: "%-d %b") %></span>
-            <span class="flex-1"><%= t(".last_known") %></span>
-            <span class="font-medium privacy-sensitive"><%= money.(forecast.starting_balance) %></span>
-          </li>
-          <% if forecast.daily_spend.positive? %>
-            <li class="flex items-baseline justify-between gap-3 py-1.5">
-              <span class="w-14 shrink-0 text-xs text-secondary"><%= t(".daily") %></span>
-              <span class="flex-1"><%= t(".daily_spend") %></span>
-              <span class="font-medium privacy-sensitive">−<%= t(".per_day", amount: money.(forecast.daily_spend)) %></span>
-            </li>
-          <% end %>
-          <% focus.events_before.each do |event| %>
-            <li class="flex items-baseline justify-between gap-3 py-1.5">
-              <span class="w-14 shrink-0 text-xs text-secondary"><%= l(event.date, format: "%-d %b") %></span>
-              <span class="flex-1">
-                <%= event.name %>
-                <% tag = event.estimate ? t(".estimate") : (event.kind == :pending ? t(".pending") : nil) %>
-                <% if tag %><span class="ml-1 rounded-full bg-warning/10 px-1.5 py-0.5 text-[10px] text-warning"><%= tag %></span><% end %>
-              </span>
-              <span class="font-medium whitespace-nowrap privacy-sensitive <%= "text-success" if event.inflow? %>"><%= event.inflow? ? "+" : "−" %><%= money.(event.amount.abs) %></span>
-            </li>
-          <% end %>
-          <li class="flex items-baseline justify-between gap-3 py-1.5">
-            <span class="w-14 shrink-0"></span>
-            <span class="flex-1 font-medium"><%= t(".lowest_point") %></span>
-            <span class="font-medium privacy-sensitive <%= focus.under_floor ? "text-destructive" : "text-primary" %>"><%= money.(focus.balance) %></span>
-          </li>
-        </ul>
-      </div>
-
-      <% if forecast.suggestions.any? %>
-        <div class="space-y-2">
-          <p class="text-xs text-secondary"><%= t(".make_room") %></p>
-          <% forecast.suggestions.each do |s| %>
-            <% args = { name: s.name, amount: s.amount ? money.(s.amount) : nil, date: s.date ? l(s.date, format: "%-d %b") : nil, balance: s.balance_if ? money.(s.balance_if) : nil } %>
-            <div class="rounded-lg px-3 py-2 text-sm <%= s.kind == :income_dependency ? "bg-warning/10" : "bg-container-inset" %>">
-              <p class="font-medium privacy-sensitive"><%= t(".suggestions.#{s.kind}.title", **args) %></p>
-              <p class="text-xs text-secondary privacy-sensitive"><%= t(".suggestions.#{s.kind}.body", **args) %></p>
-            </div>
-          <% end %>
-        </div>
-      <% end %>
     </div>
   <% end %>
 </section>

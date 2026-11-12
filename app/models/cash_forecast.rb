@@ -14,6 +14,13 @@ class CashForecast
 
   Day = Data.define(:date, :balance, :events)
   LowPoint = Data.define(:date, :balance, :under_floor, :near_floor, :next_payday, :events_before)
+  # A stretch up to a payday (payday nil for the stretch after the last one,
+  # or the whole forecast when there is no payday). `room` is how far its
+  # lowest day sits above the floor (negative when short).
+  Cycle = Data.define(:starts_on, :payday, :low_point, :status, :room)
+  # One event with the balance right after it (everyday spending for the day
+  # comes off before the day's events).
+  Step = Data.define(:date, :event, :balance_after)
 
   # Visible bank accounts that bills or income are attached to, the one with
   # the most attached first.
@@ -97,6 +104,37 @@ class CashForecast
 
   def tight?
     first_tight.present?
+  end
+
+  # The stretches between paydays, each with its lowest day and how it sits
+  # against the floor: :short (under it), :tight (within 10% above) or :ok.
+  def cycles
+    @cycles ||= windows.filter_map do |window_days, payday|
+      low = window_days.min_by(&:balance)
+      next unless low
+
+      point = low_points.find { |lp| lp.date == low.date }
+      status = point.under_floor ? :short : (point.near_floor ? :tight : :ok)
+      Cycle.new(starts_on: window_days.first.date, payday: payday, low_point: point, status: status,
+                room: point.balance - floor)
+    end
+  end
+
+  def steps(through:)
+    previous = starting_balance
+    days.take_while { |day| day.date <= through }.flat_map do |day|
+      balance = previous - daily_spend
+      previous = day.balance
+      day.events.map do |event|
+        balance += event.amount
+        Step.new(date: day.date, event: event, balance_after: balance)
+      end
+    end
+  end
+
+  # Everyday spending from the day after the last-known date through `through`.
+  def everyday_total(through:)
+    daily_spend * [ (through - last_known_date).to_i, 0 ].max
   end
 
   def first_tight

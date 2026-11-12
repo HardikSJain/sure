@@ -65,22 +65,9 @@ class Dashboard::UpcomingMoney
     money(forecast ? forecast.starting_balance : 0)
   end
 
-  # One row per event, each with the balance right after it (a day's everyday
-  # spending comes off before its events).
+  # One row per event, each with the balance right after it.
   def rows
-    @rows ||= begin
-      previous = forecast ? forecast.starting_balance : 0
-      days.flat_map do |day|
-        balance = previous - forecast.daily_spend
-        previous = day.balance
-        day.events.map do |event|
-          balance += event.amount
-          series = event.source.is_a?(RecurringOccurrence) ? event.source.recurring_transaction : nil
-          Row.new(event: event, date: day.date, name: event.name, amount: money(event.amount.abs), income: event.inflow?,
-                  autopay: series&.autopay? || false, balance_after: money(balance))
-        end
-      end
-    end
+    @rows ||= forecast ? forecast.steps(through: forecast.end_date).map { |step| row_for(step) } : []
   end
 
   def money_in
@@ -105,6 +92,13 @@ class Dashboard::UpcomingMoney
   end
 
   private
+    def row_for(step)
+      event = step.event
+      series = event.source.is_a?(RecurringOccurrence) ? event.source.recurring_transaction : nil
+      Row.new(event: event, date: step.date, name: event.name, amount: money(event.amount.abs), income: event.inflow?,
+              autopay: series&.autopay? || false, balance_after: money(step.balance_after))
+    end
+
     def money(amount)
       Money.new(amount, account&.currency || family.currency)
     end
