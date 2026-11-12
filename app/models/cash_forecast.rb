@@ -103,6 +103,15 @@ class CashForecast
     low_points.find(&:under_floor)
   end
 
+  # Ways to make room, for the first tight day, or else the lowest day that is
+  # near the floor; none when there is room throughout.
+  def suggestions
+    @suggestions ||= begin
+      low = first_tight || low_points.select(&:near_floor).min_by(&:balance)
+      low ? CashForecast::Suggestions.new(self).for(low) : []
+    end
+  end
+
   # The same forecast cut to its first `days` days (the dashboard shows 30).
   def window(days)
     self.class.new(account, user: user, today: today, horizon_days: days)
