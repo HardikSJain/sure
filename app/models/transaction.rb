@@ -113,7 +113,10 @@ class Transaction < ApplicationRecord
 
   # Providers that support pending transaction flags
   # sorted
-  PENDING_PROVIDERS = %w[akahu enable_banking financekit lunchflow mercury monobank plaid redbark simplefin up].freeze
+  # "statement_import" is not a bank feed: a self-hosted statement importer marks
+  # money it knows has moved (seen on the other account) before the bank's own
+  # statement shows it, so the line stays out of balances until it does.
+  PENDING_PROVIDERS = %w[akahu enable_banking financekit lunchflow mercury monobank plaid redbark simplefin statement_import up].freeze
 
   # Slice size for the entry touch in reassign_category! — bounds the UPDATE
   # statement size when a merge or category destroy hits many transactions.

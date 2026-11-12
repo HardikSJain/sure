@@ -9,6 +9,14 @@ class TransactionTest < ActiveSupport::TestCase
     assert transaction.pending?
   end
 
+  test "a statement import can mark a line pending, keeping it out of balances" do
+    entry = create_transaction(account: accounts(:depository), amount: 50)
+    entry.entryable.update!(extra: { "statement_import" => { "pending" => true } })
+
+    assert entry.entryable.reload.pending?
+    assert_not Entry.excluding_pending.exists?(entry.id)
+  end
+
   test "pending? is true when extra.plaid.pending is truthy" do
     transaction = Transaction.new(extra: { "plaid" => { "pending" => "true" } })
 
