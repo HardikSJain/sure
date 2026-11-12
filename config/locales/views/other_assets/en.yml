@@ -1,6 +1,9 @@
 ---
 en:
   other_assets:
+    form:
+      subtype_prompt: What kind of asset
+      none: Other
     edit:
       edit: Edit %{account}
       balance_tracking_info: "Other Assets are tracked via manual valuations using 'New Balance', not transactions. Cashflow will not affect the account balance."

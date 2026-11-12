@@ -687,6 +687,9 @@ class User < ApplicationRecord
   # Blank or negative clears the floor.
   def update_cash_floor!(account, amount)
     value = amount.to_s.strip.presence && BigDecimal(amount.to_s)
+  rescue ArgumentError
+    nil # not a number: leave the floor as it was
+  else
     with_locked_preferences do |prefs|
       floors = prefs["cash_floors"] || {}
       if value&.positive?

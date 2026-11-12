@@ -31,7 +31,8 @@ class CashForecast::Suggestions
          .select { |e| e.kind == :card_bill && e.date >= low.next_payday - DAYS_BEFORE_PAYDAY }
          .map do |e|
            card = e.source.recurring_transaction.destination_account
-           suggestion(:move_due_date, card.name, -e.amount, e.date, low.balance - e.amount)
+           name = visible_ids.include?(card.id) ? card.name : I18n.t("cash_forecast.unnamed_card", default: "Another member's card")
+           suggestion(:move_due_date, name, -e.amount, e.date, low.balance - e.amount)
          end
     end
 
@@ -40,6 +41,7 @@ class CashForecast::Suggestions
       on_schedule = family.recurring_transactions.where(status: "active").where.not(destination_account_id: nil)
                           .select(:account_id)
       family.accounts.visible
+            .where(id: visible_ids.to_a)
             .where(accountable_type: "OtherAsset")
             .joins("JOIN other_assets ON other_assets.id = accounts.accountable_id")
             .where(other_assets: { subtype: "receivable" })
@@ -58,6 +60,16 @@ class CashForecast::Suggestions
     def wallet_top_ups
       forecast.events.select { |e| e.kind == :top_up }.map do |e|
         suggestion(:wallet_top_up, e.name, -e.amount, e.date, nil)
+      end
+    end
+
+    # Accounts the viewer can open; another member's private accounts are
+    # neither suggested nor named.
+    def visible_ids
+      @visible_ids ||= begin
+        scope = forecast.account.family.accounts
+        scope = scope.merge(Account.accessible_by(forecast.user)) if forecast.user
+        scope.pluck(:id).to_set
       end
     end
 

@@ -1690,9 +1690,14 @@ class UserTest < ActiveSupport::TestCase
     assert_equal 0, @user.reload.cash_floor(account)
   end
 
+  test "a cash floor that isn't a number is ignored, not an error" do
+    @user.update_cash_floor!(accounts(:depository), 2000)
+    @user.update_cash_floor!(accounts(:depository), "abc")
+    assert_equal 2000, @user.reload.cash_floor(accounts(:depository))
+  end
+
   test "a negative cash floor clears it" do
     @user.update_cash_floor!(accounts(:depository), -5)
     assert_equal 0, @user.reload.cash_floor(accounts(:depository))
   end
-
 end

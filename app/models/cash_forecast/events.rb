@@ -22,10 +22,11 @@ class CashForecast::Events
     account.entries.excluding_pending.where(date: ..today).maximum(:date) || today
   end
 
-  def initialize(account, from:, through:)
+  def initialize(account, from:, through:, user: nil)
     @account = account
     @from = from
     @through = through
+    @user = user
   end
 
   def to_a
@@ -34,7 +35,13 @@ class CashForecast::Events
   end
 
   private
-    attr_reader :account, :from, :through
+    attr_reader :account, :from, :through, :user
+
+    # Accounts the viewer can't open are never named (another member's card
+    # or wallet); their amounts still count.
+    def visible?(other)
+      user.nil? || Account.accessible_by(user).exists?(other.id)
+    end
 
     def family
       account.family
@@ -88,16 +95,24 @@ class CashForecast::Events
       end
     end
 
+    # The bill is the card's statement balance (a valuation dated in the
+    # statement window before the due date), less anything paid to the card
+    # since. Without a statement in that window, it's the declared amount,
+    # marked as an estimate.
     def card_bill(occurrence, card, declared, date, name)
-      card_known = self.class.last_known_date(card)
-      if card_known >= date - STATEMENT_LEAD_DAYS
-        owed = to_account_currency(balance_on(card, card_known), card.currency)
-        return nil unless owed.positive?
+      statement = card.entries.where(entryable_type: "Valuation", date: (date - STATEMENT_LEAD_DAYS)..(date - 1))
+                      .order(date: :desc).first
+      return build(date, name, -declared, :card_bill, estimate: true, source: occurrence) unless statement
 
-        build(date, name, -owed, :card_bill, source: occurrence)
-      else
-        build(date, name, -declared, :card_bill, estimate: true, source: occurrence)
-      end
+      paid_since = card.entries.excluding_pending
+                       .joins("JOIN transactions ON transactions.id = entries.entryable_id AND entries.entryable_type = 'Transaction'")
+                       .where(date: (statement.date + 1)..date, transactions: { kind: %w[funds_movement cc_payment] })
+                       .where("entries.amount < 0")
+                       .sum(:amount).abs
+      owed = to_account_currency(statement.amount.to_d - paid_since, card.currency)
+      return nil unless owed.positive?
+
+      build(date, name, -owed, :card_bill, source: occurrence)
     end
 
     def pending_events
@@ -110,33 +125,38 @@ class CashForecast::Events
 
     # A bill paid from a wallet (an investment account's cash) only touches
     # this account when the wallet can't cover it, and only if this account is
-    # the one that tops that wallet up.
+    # the one that tops that wallet up. Money due into the wallet (income on
+    # it, transfers to it) fills it first.
     def top_up_events
-      wallet_series = family.recurring_transactions.where(status: "active", destination_account_id: nil)
-                            .joins(:account).where(accounts: { accountable_type: WALLET_TYPES })
-      wallet_series.group_by(&:account).flat_map do |wallet, series|
-        next [] unless funding_bank(wallet) == account
-
-        wallet_top_ups(wallet, series)
+      wallet_ids = family.recurring_transactions.where(status: "active", destination_account_id: nil).select(:account_id)
+      family.accounts.where(accountable_type: WALLET_TYPES, id: wallet_ids).flat_map do |wallet|
+        funding_bank(wallet) == account ? wallet_top_ups(wallet) : []
       end
     end
 
-    def wallet_top_ups(wallet, series)
+    def wallet_top_ups(wallet)
       cash = to_account_currency(wallet.cash_balance.to_d, wallet.currency)
-      wallet_known = self.class.last_known_date(wallet)
-      counted_occurrences(RecurringTransaction.where(id: series.map(&:id)), after: wallet_known)
-        .sort_by { |occurrence, _| occurrence.effective_due_on }
-        .filter_map do |occurrence, amount|
-          if amount > cash
-            short = amount - cash
-            cash = 0
-            date = occurrence.effective_due_on
-            build(date, "Top up #{wallet.name}", -short, :top_up, source: wallet) if date >= from
-          else
-            cash -= amount
-            nil
-          end
+      series = family.recurring_transactions.where(status: "active")
+                     .where("account_id = :id OR destination_account_id = :id", id: wallet.id)
+      flows = counted_occurrences(series, after: self.class.last_known_date(wallet)).map do |occurrence, amount|
+        [ occurrence, wallet_inflow?(occurrence.recurring_transaction, wallet) ? amount : -amount ]
+      end
+      name = visible?(wallet) ? "Top up #{wallet.name}" : I18n.t("cash_forecast.top_up_wallet", default: "Top up a wallet")
+      flows.sort_by { |occurrence, flow| [ occurrence.effective_due_on, flow.positive? ? 0 : 1 ] }.filter_map do |occurrence, flow|
+        if flow.positive? || -flow <= cash
+          cash += flow
+          nil
+        else
+          short = -flow - cash
+          cash = 0
+          date = occurrence.effective_due_on
+          build(date, name, -short, :top_up, source: wallet) if date >= from
         end
+      end
+    end
+
+    def wallet_inflow?(series, wallet)
+      series.destination_account_id == wallet.id || series.typed_income? || series.amount.negative?
     end
 
     # The account that most recently sent money into the wallet.

@@ -68,6 +68,21 @@ class CashForecast::SuggestionsTest < ActiveSupport::TestCase
     assert_empty suggestions
   end
 
+  test "money owed in someone else's private account is not suggested, and their card stays unnamed" do
+    create_series(@bank, name: "Rent", amount: 800, due: @payday - 2)
+    member = users(:family_member)
+    families(:dylan_family).accounts.create!(name: "Member's loan to a friend", balance: 700, currency: @bank.currency,
+                                             owner: member, accountable: OtherAsset.new(subtype: "receivable"), status: "active")
+    private_card = families(:dylan_family).accounts.create!(name: "Member's private card", balance: 500, currency: @bank.currency,
+                                                            owner: member, accountable: CreditCard.new, status: "active")
+    known_until(private_card, @known - 5, 500)
+    create_series(@bank, name: "Their card bill", amount: 500, due: @payday - 1, destination_account: private_card)
+
+    names = suggestions.map(&:name)
+    assert_not_includes names, "Member's loan to a friend"
+    assert_not_includes names, "Member's private card"
+  end
+
   private
     def forecast
       CashForecast.new(@bank, user: @user)

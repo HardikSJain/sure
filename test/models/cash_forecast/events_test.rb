@@ -105,6 +105,29 @@ class CashForecast::EventsTest < ActiveSupport::TestCase
     assert_equal(-50, events.find { |e| e.name == "Foreign bill" }.amount)
   end
 
+  test "money coming into a wallet fills it before its bills, so no false top-up" do
+    wallet = create_wallet("Fed wallet", cash: 0)
+    create_transfer(from_account: @bank, to_account: wallet, amount: 500, date: @known - 10)
+    create_series(wallet, name: "Dividend", amount: -400, due: Date.current + 2, bill_type: "income")
+    create_series(@bank, name: "Monthly top-up", amount: 300, due: Date.current + 3, destination_account: wallet)
+    create_series(wallet, name: "Index SIP", amount: 270, due: Date.current + 7)
+
+    assert_empty events.select { |e| e.kind == :top_up && e.date <= Date.current + 7 }
+  end
+
+  test "a card bill is the statement's balance, less what was paid after it, even when the card runs past the due date" do
+    due = Date.current + 10
+    card = create_card("Statement card", balance: 999, known: due - 20)
+    card.entries.find_by!(entryable_type: "Valuation").update!(amount: 300)
+    payment = Transaction.new(kind: "funds_movement")
+    card.entries.create!(name: "Part payment", date: due - 5, amount: -100, currency: card.currency, entryable: payment)
+    card.entries.create!(name: "Later spend", date: due + 3, amount: 50, currency: card.currency, entryable: Transaction.new)
+    create_series(@bank, name: "Statement card bill", amount: 250, due: due, destination_account: card)
+
+    bill = events.find { |e| e.name == "Statement card bill" }
+    assert_equal [ -200, false ], [ bill.amount, bill.estimate ]
+  end
+
   private
     def events
       CashForecast::Events.new(@bank, from: @known + 1, through: Date.current + 60).to_a

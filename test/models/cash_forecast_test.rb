@@ -123,6 +123,30 @@ class CashForecastTest < ActiveSupport::TestCase
     assert_in_delta 30, forecast.everyday_total(through: @known + 3), 0.01
   end
 
+  test "an old statement still forecasts 60 days and two paydays ahead of today" do
+    stale = create_bank(name: "Stale bank")
+    known_until(stale, Date.current - 35, 1000)
+    create_series(stale, name: "Pay", amount: -2000, due: Date.current + 3, bill_type: "income")
+    f = CashForecast.new(stale, user: @user)
+
+    assert_operator f.end_date, :>=, Date.current + 60
+    assert_operator f.paydays.count { |d| d > Date.current }, :>=, 2
+  end
+
+  test "a later stretch's steps start from its own opening balance and add up to its low" do
+    spend(@bank, 900, date: @known - 1) # 10 a day
+    create_series(@bank, name: "Salary", amount: -500, due: @known + 4, bill_type: "income")
+    create_series(@bank, name: "Rent", amount: 1200, due: @known + 9)
+    f = forecast
+    cycle = f.cycles.second
+    low = cycle.low_point
+    opening = f.days.find { |d| d.date == cycle.starts_on - 1 }.balance
+    stretch = f.steps(through: low.date).select { |s| s.date >= cycle.starts_on }
+
+    total = opening + stretch.sum { |s| s.event.amount } - f.daily_spend * (low.date - cycle.starts_on + 1).to_i
+    assert_in_delta low.balance, total, 0.01
+  end
+
   private
     def forecast
       CashForecast.new(@bank, user: @user)

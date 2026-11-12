@@ -59,9 +59,10 @@
             <%= t(".under_floor", amount: format_money(low_money, precision: 0), date: l(low.date, format: "%a, %d %b"),
                   floor: format_money(Money.new(upcoming.floor, low_money.currency), precision: 0)) %>
           <% else %>
-            <%= t(upcoming.goes_negative? ? ".goes_negative" : ".low_point",
+            <% after = low.events_before.last&.name %>
+            <%= t("#{upcoming.goes_negative? ? ".goes_negative" : ".low_point"}#{"_no_event" unless after}",
                   amount: format_money(low_money, precision: 0), date: l(low.date, format: "%a, %d %b"),
-                  name: low.events_before.last&.name.to_s) %>
+                  name: after.to_s) %>
           <% end %>
           <% if warn %>
             <%= link_to t(".see_bills"), bills_path, class: "underline focus-ring" %>

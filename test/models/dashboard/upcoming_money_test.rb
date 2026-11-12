@@ -26,7 +26,7 @@ class Dashboard::UpcomingMoneyTest < ActiveSupport::TestCase
     bill = upcoming.rows.first
     assert_in_delta forecast.days.find { |d| d.date == @known + 5 }.balance, bill.balance_after.amount, 0.01
     assert_in_delta forecast.days.last.balance, upcoming.ending_cash.amount, 0.01
-    assert_equal @known + 30, upcoming.horizon
+    assert_equal Date.current + 30, upcoming.horizon # 30 days ahead of today, walked from the last-known date
   end
 
   test "under the floor it says so, with the low point" do

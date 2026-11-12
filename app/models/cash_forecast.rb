@@ -58,11 +58,13 @@ class CashForecast
     @daily_spend ||= CashForecast::DailySpend.new(account, through: last_known_date).amount
   end
 
+  # Measured from today (or the last-known date, if that is later): an old
+  # statement still gets a full look ahead, walked from where it is known.
   def end_date
     @end_date ||= if @horizon_days
-      last_known_date + @horizon_days
+      anchor_date + @horizon_days
     else
-      [ last_known_date + @min_days, all_paydays.second ].compact.max
+      [ anchor_date + @min_days, all_paydays.select { |date| date > today }.second ].compact.max
     end
   end
 
@@ -156,9 +158,13 @@ class CashForecast
   end
 
   private
+    def anchor_date
+      [ today, last_known_date ].max
+    end
+
     def all_events
-      @all_events ||= CashForecast::Events.new(account, from: last_known_date + 1,
-                                                        through: last_known_date + [ @min_days, LOOKAHEAD_DAYS ].max).to_a
+      @all_events ||= CashForecast::Events.new(account, from: last_known_date + 1, user: user,
+                                                        through: anchor_date + [ @min_days, LOOKAHEAD_DAYS, @horizon_days.to_i ].max).to_a
     end
 
     def all_paydays

@@ -300,6 +300,22 @@ class PagesControllerTest < ActionDispatch::IntegrationTest
     assert_select "#upcoming-money [data-upcoming-under-floor] a[href='#{bills_path}']"
   end
 
+  test "next 30 days never ends a sentence on an empty name" do
+    @user.update!(preferences: (@user.preferences || {}).merge("preview_features_enabled" => true))
+    bank = accounts(:depository)
+    @family.recurring_transactions.destroy_all
+    due = Date.current + 5
+    @family.recurring_transactions.create!(account: bank, name: "Pay", amount: -900, dedup_scope: "pay", currency: bank.currency,
+                                           expected_day_of_month: due.day, anchor_date: due, last_occurrence_date: due.prev_month,
+                                           next_expected_date: due, status: "active", manual: true, bill_type: "income")
+
+    get root_path
+
+    assert_select "#upcoming-money" do |widget|
+      assert_no_match(/after \./, widget.text)
+    end
+  end
+
   test "update_section_hidden rejects unknown sections" do
     patch dashboard_section_hidden_path("not_a_widget"), params: { hidden: true }
 
