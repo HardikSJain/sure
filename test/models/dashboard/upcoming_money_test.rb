@@ -1,43 +1,50 @@
 require "test_helper"
+require Rails.root.join("test/support/cash_forecast_test_helper").to_s
 
 class Dashboard::UpcomingMoneyTest < ActiveSupport::TestCase
+  include CashForecastTestHelper
+
   setup do
-    @family = users(:family_admin).family
+    travel_to Date.new(2026, 6, 15)
+    @user = users(:family_admin)
+    @family = @user.family
+    @family.recurring_transactions.destroy_all
+    @bank = create_bank(balance: 1000)
+    @known = Date.current - 2
+    known_until(@bank, @known, 1000)
   end
 
-  test "walks bank cash forward through bills and income, in date order" do
-    bill_due = Date.current + 5
-    pay_due = Date.current + 10
-    create_series(name: "Phone bill", amount: 300, due: bill_due)
-    create_series(name: "Salary", amount: -1000, due: pay_due, bill_type: "income")
+  test "walks the same balance as the Bills page's room forecast, for 30 days" do
+    spend(@bank, 900, date: @known - 1) # 10 a day of everyday spending
+    create_series(@bank, name: "Phone bill", amount: 300, due: @known + 5)
+    create_series(@bank, name: "Salary", amount: -1000, due: @known + 10, bill_type: "income")
+    forecast = CashForecast.new(@bank, user: @user).window(30)
 
-    upcoming = Dashboard::UpcomingMoney.new(@family)
-    bill = upcoming.rows.find { |r| r.name == "Phone bill" }
-    pay = upcoming.rows.find { |r| r.name == "Salary" }
-
-    assert bill && pay
-    assert_not bill.income
-    assert pay.income
-    assert_operator upcoming.rows.index(bill), :<, upcoming.rows.index(pay)
-    assert_equal 300, bill.amount.amount
-    assert_equal 1000, pay.amount.amount
-    before_bill = upcoming.rows.take_while { |r| r != bill }.sum { |r| r.income ? r.amount.amount : -r.amount.amount }
-    assert_equal upcoming.starting_cash.amount + before_bill - 300, bill.balance_after.amount
+    assert_equal @bank, upcoming.account
+    assert_equal @known, upcoming.last_known_date
+    assert_equal [ "Phone bill", "Salary" ], upcoming.rows.first(2).map(&:name)
+    bill = upcoming.rows.first
+    assert_in_delta forecast.days.find { |d| d.date == @known + 5 }.balance, bill.balance_after.amount, 0.01
+    assert_in_delta forecast.days.last.balance, upcoming.ending_cash.amount, 0.01
+    assert_equal @known + 30, upcoming.horizon
   end
 
-  test "nothing past the horizon" do
-    create_series(name: "Far away", amount: 50, due: Date.current + Dashboard::UpcomingMoney::DAYS_AHEAD + 10)
+  test "under the floor it says so, with the low point" do
+    create_series(@bank, name: "Rent", amount: 900, due: @known + 5)
+    @user.update_cash_floor!(@bank, 500)
 
-    assert_not Dashboard::UpcomingMoney.new(@family).rows.any? { |r| r.name == "Far away" }
+    assert upcoming.under_floor?
+    assert_equal @known + 5, upcoming.low_point.date
+    assert_equal 500, upcoming.floor
+  end
+
+  test "nothing to show without a bank account that bills are attached to" do
+    assert_not upcoming.any?
+    assert_nil upcoming.account
   end
 
   private
-    def create_series(name:, amount:, due:, bill_type: "bill")
-      @family.recurring_transactions.create!(
-        account: accounts(:depository), name: name, amount: amount, dedup_scope: amount.to_s,
-        currency: @family.currency, expected_day_of_month: due.day, anchor_date: due,
-        last_occurrence_date: due.prev_month, next_expected_date: due, status: "active",
-        manual: true, bill_type: bill_type
-      )
+    def upcoming
+      Dashboard::UpcomingMoney.new(@family, user: @user)
     end
 end

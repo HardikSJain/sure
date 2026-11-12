@@ -282,6 +282,24 @@ class PagesControllerTest < ActionDispatch::IntegrationTest
     assert_select "section[data-section-key='upcoming_money']"
   end
 
+  test "next 30 days warns under the floor and points to the Bills page" do
+    @user.update!(preferences: (@user.preferences || {}).merge("preview_features_enabled" => true))
+    bank = accounts(:depository)
+    @family.recurring_transactions.destroy_all
+    bank.entries.create!(name: "Statement balance", date: Date.current, amount: 1000, currency: bank.currency,
+                         entryable: Valuation.new(kind: "reconciliation"))
+    bank.update!(balance: 1000)
+    due = Date.current + 5
+    @family.recurring_transactions.create!(account: bank, name: "Big bill", amount: 900, dedup_scope: "900", currency: bank.currency,
+                                           expected_day_of_month: due.day, anchor_date: due, last_occurrence_date: due.prev_month,
+                                           next_expected_date: due, status: "active", manual: true)
+    @user.update_cash_floor!(bank, 500)
+
+    get root_path
+
+    assert_select "#upcoming-money [data-upcoming-under-floor] a[href='#{bills_path}']"
+  end
+
   test "update_section_hidden rejects unknown sections" do
     patch dashboard_section_hidden_path("not_a_widget"), params: { hidden: true }
 

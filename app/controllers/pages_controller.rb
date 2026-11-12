@@ -209,7 +209,7 @@ class PagesController < ApplicationController
             title: "pages.dashboard.upcoming_money.title",
             partial: "pages/dashboard/upcoming_money",
             layout: section_layout("upcoming_money"),
-            locals: { upcoming: Dashboard::UpcomingMoney.new(Current.family) },
+            locals: { upcoming: Dashboard::UpcomingMoney.new(Current.family, user: Current.user) },
             visible: upcoming_money_available?,
             collapsible: true
           }
