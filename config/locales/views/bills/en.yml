@@ -23,8 +23,8 @@ en:
       daily: "daily"
       daily_spend: "Everyday spending (your daily average)"
       per_day: "%{amount}/day"
-      estimate: "estimate until the statement is in"
-      pending: "not on the statement yet"
+      estimate: "estimate"
+      pending: "not on statement yet"
       lowest_point: "Lowest point"
       make_room: "What would make room"
       suggestions:

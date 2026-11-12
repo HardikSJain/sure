@@ -74,7 +74,7 @@
     <% if floor.positive? %>
       <rect x="<%= left %>" y="<%= y.(floor) %>" width="<%= right - left %>" height="<%= (y.(lo) - y.(floor)).clamp(0, h) %>" fill="var(--color-red-500)" fill-opacity=".06" />
       <line x1="<%= left %>" x2="<%= right %>" y1="<%= y.(floor) %>" y2="<%= y.(floor) %>" stroke="var(--color-red-500)" stroke-width="1.2" stroke-dasharray="6 5" />
-      <text x="<%= right - 4 %>" y="<%= y.(floor) - 5 %>" text-anchor="end" font-size="11" fill="var(--color-red-500)" class="privacy-sensitive"><%= t(".floor_line", amount: money.(floor)) %></text>
+      <text x="<%= left + 4 %>" y="<%= y.(floor) - 5 %>" font-size="11" fill="var(--color-red-500)" class="privacy-sensitive"><%= t(".floor_line", amount: money.(floor)) %></text>
     <% end %>
     <% ticks.each do |date| %>
       <text x="<%= x.(date) %>" y="<%= h - 6 %>" text-anchor="middle" font-size="11" fill="currentColor" fill-opacity=".45"><%= l(date, format: "%-d %b") %></text>
