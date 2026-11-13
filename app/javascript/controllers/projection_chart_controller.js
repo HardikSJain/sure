@@ -17,8 +17,8 @@ export default class extends Controller {
 
     this.guideTarget.setAttribute("x1", month.x);
     this.guideTarget.setAttribute("x2", month.x);
-    this.dotTarget.setAttribute("cx", month.x);
-    this.dotTarget.setAttribute("cy", month.y);
+    this.dotTarget.style.left = `${(month.x / viewBox.width) * 100}%`;
+    this.dotTarget.style.top = `${(month.y / viewBox.height) * 100}%`;
     this.guideTarget.classList.remove("hidden");
     this.dotTarget.classList.remove("hidden");
 

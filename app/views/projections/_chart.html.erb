@@ -42,34 +42,25 @@
 <div class="relative space-y-2" data-controller="projection-chart" data-projection-chart-months-value="<%= tooltip.to_json %>"
      data-action="pointermove->projection-chart#move pointerleave->projection-chart#hide">
   <div class="relative pb-5">
-    <svg viewBox="0 0 <%= w.to_i %> <%= h.to_i %>" class="block w-full h-auto select-none text-primary" data-projection-chart-target="svg" role="img"
+    <svg viewBox="0 0 <%= w.to_i %> <%= h.to_i %>" preserveAspectRatio="none" class="block w-full h-56 sm:h-auto select-none text-primary" data-projection-chart-target="svg" role="img"
          aria-label="<%= t(".aria", finish: month_label.(months.last), value: money.(projection.value_at(year).amount), month: l(Date.new(year, 12, 1), format: "%b %Y"),
                            low: money.(projection.value_at(year, :weak).amount), high: money.(projection.value_at(year, :strong).amount)) %>">
       <% y_ticks.each do |v| %>
-        <line x1="<%= left %>" x2="<%= right %>" y1="<%= y.(v) %>" y2="<%= y.(v) %>" stroke="currentColor" stroke-opacity="<%= v.zero? ? ".18" : ".07" %>" />
+        <line x1="<%= left %>" x2="<%= right %>" y1="<%= y.(v) %>" y2="<%= y.(v) %>" stroke="currentColor" stroke-opacity="<%= v.zero? ? ".18" : ".07" %>" vector-effect="non-scaling-stroke" />
       <% end %>
       <path d="<%= band_path %>" fill="var(--color-green-500)" fill-opacity=".14" />
-      <path d="<%= middle_path %>" fill="none" stroke="var(--color-green-500)" stroke-width="2.2" stroke-linejoin="round" />
+      <path d="<%= middle_path %>" fill="none" stroke="var(--color-green-500)" stroke-width="2.2" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
       <% if goal %>
-        <line x1="<%= left %>" x2="<%= right %>" y1="<%= y.(goal) %>" y2="<%= y.(goal) %>" stroke="var(--color-yellow-500)" stroke-width="1.4" stroke-dasharray="6 5" />
-      <% end %>
-      <% junes.each do |i| %>
-        <circle cx="<%= x.(i) %>" cy="<%= bottom %>" r="3" fill="var(--color-blue-500)" />
+        <line x1="<%= left %>" x2="<%= right %>" y1="<%= y.(goal) %>" y2="<%= y.(goal) %>" stroke="var(--color-yellow-500)" stroke-width="1.4" stroke-dasharray="6 5" vector-effect="non-scaling-stroke" />
       <% end %>
       <% if headline_index %>
-        <line x1="<%= x.(headline_index) %>" x2="<%= x.(headline_index) %>" y1="<%= top %>" y2="<%= bottom %>" stroke="currentColor" stroke-opacity=".18" stroke-dasharray="3 4" />
+        <line x1="<%= x.(headline_index) %>" x2="<%= x.(headline_index) %>" y1="<%= top %>" y2="<%= bottom %>" stroke="currentColor" stroke-opacity=".18" stroke-dasharray="3 4" vector-effect="non-scaling-stroke" />
       <% end %>
-      <% if crossing_index %>
-        <circle cx="<%= x.(crossing_index) %>" cy="<%= y.(points[crossing_index].middle) %>" r="9" fill="var(--color-green-500)" fill-opacity=".18" />
-        <circle cx="<%= x.(crossing_index) %>" cy="<%= y.(points[crossing_index].middle) %>" r="4.5" fill="var(--color-green-500)" />
-      <% end %>
-      <circle cx="<%= left %>" cy="<%= y.(today_value) %>" r="5" fill="var(--color-white)" stroke="currentColor" stroke-width="2" />
-      <line class="hidden" data-projection-chart-target="guide" y1="<%= top %>" y2="<%= bottom %>" stroke="currentColor" stroke-opacity=".3" />
-      <circle class="hidden" data-projection-chart-target="dot" r="4.5" fill="var(--color-green-500)" />
+      <line class="hidden" data-projection-chart-target="guide" y1="<%= top %>" y2="<%= bottom %>" stroke="currentColor" stroke-opacity=".3" vector-effect="non-scaling-stroke" />
     </svg>
 
     <%# Labels as page text, positioned over the drawing. %>
-    <div class="pointer-events-none absolute inset-x-0 top-0 aspect-[760/280] text-[11px] leading-none" data-projection-chart-labels aria-hidden="true">
+    <div class="pointer-events-none absolute inset-x-0 top-0 bottom-5 text-[11px] leading-none" data-projection-chart-labels aria-hidden="true">
       <% y_ticks.each do |v| %>
         <span class="absolute -translate-y-full pb-0.5 text-secondary privacy-sensitive" style="<%= pct.(left, y.(v)) %>"><%= v.zero? ? "0" : short.(v) %></span>
       <% end %>
@@ -88,6 +79,17 @@
               style="<%= pct.(cx, y.(points[crossing_index].middle)) %>; color: var(--color-green-500)"><%= t(".crossing", month: l(projection.crossing, format: "%b %Y")) %></span>
       <% end %>
       <span class="absolute pt-2.5 pl-1.5 text-secondary whitespace-nowrap privacy-sensitive" style="<%= pct.(left, y.(today_value)) %>"><%= t(".today", amount: money.(today_value)) %></span>
+
+      <%# Dots as page elements too, so they stay round when the chart stretches. %>
+      <% junes.each do |i| %>
+        <i class="absolute w-1.5 h-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full" style="<%= pct.(x.(i), bottom) %>; background: var(--color-blue-500)"></i>
+      <% end %>
+      <% if crossing_index %>
+        <i class="absolute w-5 h-5 -translate-x-1/2 -translate-y-1/2 rounded-full" style="<%= pct.(x.(crossing_index), y.(points[crossing_index].middle)) %>; background: color-mix(in srgb, var(--color-green-500) 20%, transparent)"></i>
+        <i class="absolute w-2.5 h-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full" style="<%= pct.(x.(crossing_index), y.(points[crossing_index].middle)) %>; background: var(--color-green-500)"></i>
+      <% end %>
+      <i class="absolute w-2.5 h-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-current bg-white text-primary" style="<%= pct.(left, y.(today_value)) %>"></i>
+      <i class="hidden absolute w-2.5 h-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full" style="background: var(--color-green-500)" data-projection-chart-target="dot"></i>
     </div>
   </div>
 
