@@ -1,0 +1,55 @@
+<%# locals: (projection:, year:) %>
+<%
+  goal = projection.goal
+  share = projection.goal_share
+  crossing = projection.crossing
+  late = projection.months_late
+  ring = 2 * Math::PI * 24
+%>
+<div class="space-y-4">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <p class="text-sm text-secondary"><%= t(".label", year: year) %></p>
+    <nav class="flex rounded-lg bg-container-inset p-0.5 text-xs" aria-label="<%= t(".years") %>">
+      <% projection.years.each do |y| %>
+        <%= link_to y, projection_path(year: y),
+              class: class_names("px-2.5 py-1 rounded-md", y == year ? "bg-container text-primary shadow-border-xs font-medium" : "text-secondary hover:text-primary"),
+              aria: { current: (y == year ? "true" : nil) } %>
+      <% end %>
+    </nav>
+  </div>
+
+  <div class="flex flex-wrap items-end justify-between gap-4">
+    <div>
+      <p class="text-4xl font-semibold tracking-tight text-primary privacy-sensitive"><%= compact_money(projection.value_at(year)) %></p>
+      <p class="text-sm text-secondary mt-1 privacy-sensitive">
+        <%= t(".range", low: compact_money(projection.value_at(year, :weak)), high: compact_money(projection.value_at(year, :strong))) %>
+      </p>
+    </div>
+
+    <% if goal %>
+      <div data-projection-goal class="flex items-center gap-3 rounded-xl bg-container-inset px-4 py-3">
+        <svg width="58" height="58" viewBox="0 0 58 58" role="img" aria-label="<%= t(".ring_aria", share: share) %>">
+          <circle cx="29" cy="29" r="24" fill="none" stroke="var(--color-yellow-500)" stroke-opacity=".2" stroke-width="6" />
+          <circle cx="29" cy="29" r="24" fill="none" stroke="var(--color-yellow-500)" stroke-width="6" stroke-linecap="round"
+                  stroke-dasharray="<%= (ring * share / 100.0).round(1) %> <%= ring.round(1) %>" transform="rotate(-90 29 29)" />
+          <text x="29" y="33" text-anchor="middle" font-size="12" font-weight="600" fill="currentColor"><%= share %>%</text>
+        </svg>
+        <div class="text-sm leading-snug space-y-0.5">
+          <p class="font-medium text-primary privacy-sensitive"><%= t(".goal", amount: compact_money(goal), month: l(projection.goal_month, format: "%b %Y")) %></p>
+          <% if crossing %>
+            <p class="text-secondary"><%= t(".cross", month: l(crossing, format: "%b %Y")) %></p>
+            <% on_time = late <= 0 %>
+            <span class="inline-block text-[11px] font-medium rounded-full px-2 py-0.5 <%= on_time ? "text-success" : "text-warning" %>"
+                  style="background: color-mix(in srgb, var(<%= on_time ? "--color-green-500" : "--color-yellow-500" %>) 14%, transparent)">
+              <%= late.zero? ? t(".on_time") : late.positive? ? t(".late", count: late) : t(".early", count: -late) %>
+            </span>
+          <% else %>
+            <p class="text-warning"><%= t(".not_reached", month: l(projection.months.last, format: "%b %Y")) %></p>
+          <% end %>
+        </div>
+      </div>
+    <% else %>
+      <p class="text-xs text-secondary"><%= t(".no_goal") %></p>
+    <% end %>
+  </div>
+</div>

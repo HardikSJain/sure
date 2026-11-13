@@ -1,0 +1,85 @@
+---
+en:
+  projections:
+    show:
+      title: Where you're headed
+      subtitle: Net worth from here, worked out from today's balances, your salary and what you usually spend.
+      estimates: Estimates, not promises. Markets don't move in straight lines.
+      not_ready: Add your salary as an income bill in Bills, or enter your yearly CTC below, to see where you're headed.
+      not_ready_link: Go to Bills
+    headline:
+      label: Net worth by December %{year}
+      years: Show the year
+      range: Between %{low} and %{high}, depending on markets
+      goal: "%{amount} by %{month}"
+      ring_aria: "%{share}% of the goal today"
+      cross: You cross it in %{month}
+      not_reached: Not reached by %{month}
+      on_time: On time
+      late:
+        one: 1 month late
+        other: "%{count} months late"
+      early:
+        one: 1 month early
+        other: "%{count} months early"
+      no_goal: Set a goal below to see when you'd reach it.
+    chart:
+      aria: "Net worth from today to %{finish}: about %{value} by %{month}, between %{low} and %{high}."
+      today: Today %{amount}
+      goal_line: "%{amount} goal"
+      crossing: Reaches it %{month}
+      legend_middle: Most likely (%{rate}% a year)
+      legend_band: Weak to strong markets (%{weak}% to %{strong}%)
+      legend_goal: Goal
+      legend_appraisal: June appraisal
+      tooltip_range: "%{low} to %{high}"
+    answers:
+      on_time_label: To land it on time
+      on_track: You're on track
+      per_month: "+%{amount} / month"
+      reaches: reaches %{goal} by %{month}
+      weak_label: Safe even in weak markets
+      weak_detail: if returns are only %{rate}%
+      weak_on_track: on track even at %{rate}%
+      epf_label: "Not counted yet: EPF"
+      epf_amount: "+%{amount}"
+      epf_no_account: from new contributions by %{month}; add your passbook
+      epf_left_out: left out of the goal
+      made_of: What the %{amount} is made of
+      today: Today
+      put_in: You'll put in
+      growth: Market growth
+      loss: Market losses
+    take_home:
+      title: Take-home after tax, with a %{rate}% appraisal each June
+      title_no_tax: Take-home, with a %{rate}% raise each June
+      now: Now
+      dip: full-year tax
+    assumptions:
+      title: Assumptions
+      hint: Drag to see it change. It's saved for next time.
+      appraisal: Appraisal every June
+      appraisal_hint: Humble on purpose. One raise a year, no job switch.
+      spending: Spending a month
+      spending_hint: Your recent average is %{amount}. It rises %{rise}% each April.
+      spending_hint_none: No spending history yet, so set what you usually spend.
+      use_average: Use my average
+      return: Return a year
+      return_hint: The band shows %{weak}% to %{strong}%.
+      goal_year: Goal year
+      goal_amount: Goal amount
+      goal_hint: Everything left after spending is invested.
+      spending_rise: Spending rise each April (%)
+      ctc: Yearly CTC
+      employee_pf: Your PF a year
+      other_deductions: Other salary deductions a year
+      salary_hint: With a CTC, take-home is worked out with India's new tax regime from the next April.
+      counts: Counts toward the goal
+      buckets:
+        investments: Investments
+        epf: EPF
+        bank: Bank cash
+        gold: Gold
+        owed: Money owed to you
+        other: Other assets
+        debts: Debts

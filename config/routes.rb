@@ -632,6 +632,9 @@ Rails.application.routes.draw do
     end
   end
 
+  # Where net worth is headed: the full projection page and its assumptions.
+  resource :projection, only: %i[show update]
+
   resources :bills, only: %i[index show] do
     # POST for the same reason recurring_transactions#identify is: detection
     # mutates (creates suggested series and occurrences), so it stays behind

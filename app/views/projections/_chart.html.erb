@@ -1,0 +1,96 @@
+<%# locals: (projection:, year:) %>
+<%
+  points = projection.points
+  months = projection.months
+  currency = projection.family.currency
+  money = ->(v) { compact_money(Money.new(v, currency)) }
+  short = ->(v) { compact_money(Money.new(v, currency), symbol: false) }
+  month_label = ->(date) { l(date, format: "%b %Y") }
+
+  # Geometry (viewBox units). Today sits on the left edge; month i at x(i).
+  w, h, left, right, top, bottom = 760.0, 300.0, 56.0, 744.0, 24.0, 262.0
+  n = months.size
+  x = ->(i) { (left + (i + 1).to_f / n * (right - left)).round(1) }
+  today_value = projection.today_total.amount.to_f
+  goal = projection.goal&.amount&.to_f
+  values = points.flat_map { |p| [ p.weak.to_f, p.strong.to_f ] } + [ today_value, goal ].compact
+  lo = [ values.min, 0 ].min
+  spread = [ values.max - lo, 1 ].max
+  magnitude = 10**Math.log10(spread / 4).floor
+  step = [ 1, 2, 2.5, 5, 10 ].map { |m| m * magnitude }.find { |s| spread / s <= 4 }
+  lo_tick = (lo / step).floor * step
+  hi = (values.max / step).floor * step + step
+  y = ->(v) { (bottom - (v.to_f - lo_tick) / (hi - lo_tick) * (bottom - top)).round(1) }
+
+  start = "#{left},#{y.(today_value)}"
+  middle_path = "M#{start} " + points.each_with_index.map { |p, i| "L#{x.(i)},#{y.(p.middle)}" }.join(" ")
+  band_path = "M#{start} " + points.each_with_index.map { |p, i| "L#{x.(i)},#{y.(p.strong)}" }.join(" ") + " " +
+              points.each_with_index.to_a.reverse.map { |p, i| "L#{x.(i)},#{y.(p.weak)}" }.join(" ") + " Z"
+  y_ticks = (0..((hi - lo_tick) / step).round).map { |k| lo_tick + k * step }
+  year_ticks = months.each_with_index.select { |m, _| m.month == 1 }
+  junes = projection.assumptions.appraisal_pct.positive? ? months.each_index.select { |i| months[i].month == 6 } : []
+  headline_index = months.index(Date.new(year, 12, 1))
+  crossing_index = projection.crossing && months.index(projection.crossing)
+  tooltip = points.each_with_index.map do |p, i|
+    { x: x.(i), y: y.(p.middle), month: month_label.(p.month), middle: money.(p.middle),
+      range: t(".tooltip_range", low: money.(p.weak), high: money.(p.strong)) }
+  end
+%>
+<div class="relative space-y-2" data-controller="projection-chart" data-projection-chart-months-value="<%= tooltip.to_json %>"
+     data-action="pointermove->projection-chart#move pointerleave->projection-chart#hide">
+  <svg viewBox="0 0 <%= w.to_i %> <%= h.to_i %>" class="w-full h-auto select-none text-primary" data-projection-chart-target="svg" role="img"
+       aria-label="<%= t(".aria", finish: month_label.(months.last), value: money.(projection.value_at(year).amount), month: l(Date.new(year, 12, 1), format: "%b %Y"),
+                         low: money.(projection.value_at(year, :weak).amount), high: money.(projection.value_at(year, :strong).amount)) %>">
+    <% y_ticks.each do |v| %>
+      <line x1="<%= left %>" x2="<%= right %>" y1="<%= y.(v) %>" y2="<%= y.(v) %>" stroke="currentColor" stroke-opacity="<%= v.zero? ? ".18" : ".07" %>" />
+      <text x="<%= left - 8 %>" y="<%= y.(v) + 4 %>" text-anchor="end" font-size="11" fill="currentColor" fill-opacity=".45" class="privacy-sensitive"><%= v.zero? ? "0" : short.(v) %></text>
+    <% end %>
+    <% year_ticks.each do |month, i| %>
+      <text x="<%= x.(i) %>" y="<%= h - 12 %>" text-anchor="middle" font-size="11" fill="currentColor" fill-opacity=".45"><%= month.year %></text>
+    <% end %>
+
+    <path d="<%= band_path %>" fill="var(--color-green-500)" fill-opacity=".14" />
+    <path d="<%= middle_path %>" fill="none" stroke="var(--color-green-500)" stroke-width="2.2" stroke-linejoin="round" />
+
+    <% if goal %>
+      <line x1="<%= left %>" x2="<%= right %>" y1="<%= y.(goal) %>" y2="<%= y.(goal) %>" stroke="var(--color-yellow-500)" stroke-width="1.4" stroke-dasharray="6 5" />
+      <text x="<%= left + 6 %>" y="<%= y.(goal) - 7 %>" font-size="11" font-weight="500" fill="var(--color-yellow-500)" class="privacy-sensitive"><%= t(".goal_line", amount: money.(goal)) %></text>
+    <% end %>
+
+    <% junes.each do |i| %>
+      <circle cx="<%= x.(i) %>" cy="<%= bottom %>" r="3" fill="var(--color-blue-500)" />
+    <% end %>
+
+    <% if headline_index %>
+      <line x1="<%= x.(headline_index) %>" x2="<%= x.(headline_index) %>" y1="<%= top %>" y2="<%= bottom %>" stroke="currentColor" stroke-opacity=".18" stroke-dasharray="3 4" />
+      <text x="<%= x.(headline_index) - 6 %>" y="<%= top + 10 %>" font-size="11" fill="currentColor" fill-opacity=".55" text-anchor="end"><%= l(months[headline_index], format: "%b %Y") %></text>
+    <% end %>
+
+    <% if crossing_index %>
+      <% cx, cy = x.(crossing_index), y.(points[crossing_index].middle) %>
+      <circle cx="<%= cx %>" cy="<%= cy %>" r="9" fill="var(--color-green-500)" fill-opacity=".18" />
+      <circle cx="<%= cx %>" cy="<%= cy %>" r="4.5" fill="var(--color-green-500)" />
+      <text x="<%= [ cx, right - 70 ].min %>" y="<%= cy - 14 %>" font-size="11" font-weight="500" fill="var(--color-green-500)" text-anchor="middle"><%= t(".crossing", month: l(projection.crossing, format: "%b %Y")) %></text>
+    <% end %>
+
+    <circle cx="<%= left %>" cy="<%= y.(today_value) %>" r="5" fill="var(--color-white)" stroke="currentColor" stroke-width="2" />
+    <text x="<%= left + 10 %>" y="<%= y.(today_value) + 18 %>" font-size="11" fill="currentColor" fill-opacity=".7" class="privacy-sensitive"><%= t(".today", amount: money.(today_value)) %></text>
+
+    <line class="hidden" data-projection-chart-target="guide" y1="<%= top %>" y2="<%= bottom %>" stroke="currentColor" stroke-opacity=".3" />
+    <circle class="hidden" data-projection-chart-target="dot" r="4.5" fill="var(--color-green-500)" />
+  </svg>
+
+  <div class="pointer-events-none absolute top-0 z-10 hidden w-48 -translate-x-1/2 rounded-lg bg-container shadow-border-xs border border-primary p-2.5 text-xs space-y-0.5"
+       data-projection-chart-target="tooltip" role="tooltip">
+    <p class="font-medium" data-projection-chart-target="month"></p>
+    <p class="font-medium text-primary privacy-sensitive" data-projection-chart-target="middle"></p>
+    <p class="text-secondary privacy-sensitive" data-projection-chart-target="range"></p>
+  </div>
+
+  <div class="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-secondary pl-14" aria-hidden="true">
+    <span class="flex items-center gap-1.5"><span class="w-3 border-t-2" style="border-color: var(--color-green-500)"></span><%= t(".legend_middle", rate: projection.return_pct.to_s("F").delete_suffix(".0")) %></span>
+    <span class="flex items-center gap-1.5"><span class="w-3 h-2 rounded-sm" style="background: color-mix(in srgb, var(--color-green-500) 25%, transparent)"></span><%= t(".legend_band", weak: projection.return_pct(:weak).to_s("F").delete_suffix(".0"), strong: projection.return_pct(:strong).to_s("F").delete_suffix(".0")) %></span>
+    <% if goal %><span class="flex items-center gap-1.5"><span class="w-3 border-t-2 border-dashed" style="border-color: var(--color-yellow-500)"></span><%= t(".legend_goal") %></span><% end %>
+    <% if junes.any? %><span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full" style="background: var(--color-blue-500)"></span><%= t(".legend_appraisal") %></span><% end %>
+  </div>
+</div>

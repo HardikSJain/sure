@@ -1,0 +1,60 @@
+<%# locals: (projection:, year:) %>
+<%
+  goal = projection.goal
+  goal_label = goal && l(projection.goal_month, format: "%b %Y")
+  epf = projection.epf_aside(year)
+  value = projection.value_at(year)
+  parts = projection.composition(year)
+  pct = ->(rate) { rate.to_s("F").delete_suffix(".0") }
+  tiles = []
+  if goal
+    on_time = projection.extra_needed(:middle)
+    weak = projection.extra_needed(:weak)
+    tiles << { label: t(".on_time_label"), value: on_time.zero? ? t(".on_track") : t(".per_month", amount: format_money(on_time, precision: 0)),
+               detail: t(".reaches", goal: compact_money(goal), month: goal_label) }
+    tiles << { label: t(".weak_label"), value: weak.zero? ? t(".on_track") : t(".per_month", amount: format_money(weak, precision: 0)),
+               detail: weak.zero? ? t(".weak_on_track", rate: pct.(projection.return_pct(:weak))) : t(".weak_detail", rate: pct.(projection.return_pct(:weak))) }
+  end
+  if epf
+    tiles << { label: t(".epf_label"), value: t(".epf_amount", amount: compact_money(epf)),
+               detail: projection.buckets.any? { |b| b.key == "epf" } ? t(".epf_left_out") : t(".epf_no_account", month: l(Date.new(year, 12, 1), format: "%b %Y")) }
+  end
+  segments = [
+    [ t(".today"), parts[:today], "var(--color-gray-500)" ],
+    [ t(".put_in"), parts[:put_in], "var(--color-blue-500)" ],
+    [ parts[:growth].negative? ? t(".loss") : t(".growth"), parts[:growth], "var(--color-green-500)" ]
+  ]
+  positive_total = segments.sum { |_, m, _| [ m.amount, 0 ].max }
+%>
+<% if tiles.any? %>
+  <div class="grid grid-cols-1 <%= { 1 => "sm:grid-cols-1", 2 => "sm:grid-cols-2", 3 => "sm:grid-cols-3" }[tiles.size] %> gap-2.5">
+    <% tiles.each do |tile| %>
+      <div class="rounded-xl bg-container-inset px-3.5 py-3">
+        <p class="text-xs text-secondary"><%= tile[:label] %></p>
+        <p class="text-base font-semibold text-primary mt-0.5 privacy-sensitive"><%= tile[:value] %></p>
+        <p class="text-xs text-secondary mt-0.5 privacy-sensitive"><%= tile[:detail] %></p>
+      </div>
+    <% end %>
+  </div>
+<% end %>
+
+<div class="space-y-2">
+  <p class="text-xs text-secondary privacy-sensitive"><%= t(".made_of", amount: compact_money(value)) %></p>
+  <% if positive_total.positive? %>
+    <div class="flex h-2.5 w-full gap-0.5 overflow-hidden rounded-full" role="img"
+         aria-label="<%= segments.map { |label, m, _| "#{label} #{compact_money(m)}" }.join(", ") %>">
+      <% segments.each do |_, m, color| %>
+        <% next unless m.amount.positive? %>
+        <div class="h-full" style="width: <%= (m.amount / positive_total * 100).round(1) %>%; background-color: <%= color %>"></div>
+      <% end %>
+    </div>
+  <% end %>
+  <div class="flex flex-wrap gap-x-5 gap-y-1 text-xs text-secondary">
+    <% segments.each do |label, m, color| %>
+      <span class="flex items-center gap-1.5">
+        <span class="w-2 h-2 rounded-full" style="background-color: <%= color %>"></span>
+        <%= label %> <span class="font-medium text-primary privacy-sensitive"><%= compact_money(m) %></span>
+      </span>
+    <% end %>
+  </div>
+</div>

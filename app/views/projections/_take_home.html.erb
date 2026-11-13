@@ -1,0 +1,23 @@
+<%# locals: (projection:) %>
+<% changes = projection.take_home_changes %>
+<% rate = projection.assumptions.appraisal_pct.to_s("F").delete_suffix(".0") %>
+<% if changes.size > 1 %>
+  <div class="pt-5 border-t border-primary space-y-3">
+    <p class="text-xs text-secondary">
+      <%= projection.india? && projection.assumptions.ctc ? t(".title", rate: rate) : t(".title_no_tax", rate: rate) %>
+    </p>
+    <ol class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-y-3">
+      <% previous = nil %>
+      <% changes.each do |change| %>
+        <% dip = previous && change.amount < previous %>
+        <li class="text-center text-xs space-y-1">
+          <span class="block mx-auto w-3 h-3 rounded-full border-2 bg-container" style="border-color: var(<%= dip ? "--color-yellow-500" : "--color-blue-500" %>)"></span>
+          <span class="block text-secondary"><%= change.reason == :now ? t(".now") : l(change.month, format: "%b %Y") %></span>
+          <span class="block font-semibold text-primary privacy-sensitive"><%= compact_money(Money.new(change.amount, projection.family.currency)) %></span>
+          <% if dip %><span class="block text-[11px] text-secondary"><%= t(".dip") %></span><% end %>
+        </li>
+        <% previous = change.amount %>
+      <% end %>
+    </ol>
+  </div>
+<% end %>

@@ -1,0 +1,85 @@
+<%# locals: (projection:, year:) %>
+<%
+  a = projection.assumptions
+  currency = projection.family.currency
+  pct = ->(rate) { rate.to_s("F").delete_suffix(".0") }
+  spending = projection.spending.amount
+  from_data = projection.spending_from_data
+  spending_max = ([ (from_data&.amount || 0) * 3, spending * 2, 10_000 ].max / 1000).ceil * 1000
+  goal_years = (projection.today.year + 1)..(projection.today.year + 15)
+  sliders = [
+    { key: :appraisal_pct, label: "appraisal", value: a.appraisal_pct, min: 0, max: 30, step: 1, format: "percent", hint: t(".appraisal_hint") },
+    { key: :spending, label: "spending", value: spending, min: 0, max: spending_max, step: 500, format: "money",
+      hint: from_data ? t(".spending_hint", amount: format_money(from_data, precision: 0), rise: pct.(a.spending_rise_pct)) : t(".spending_hint_none") },
+    { key: :return_pct, label: "return", value: a.return_pct, min: 0, max: 25, step: 0.5, format: "percent",
+      hint: t(".return_hint", weak: pct.(projection.return_pct(:weak)), strong: pct.(projection.return_pct(:strong))) },
+    { key: :goal_year, label: "goal_year", value: a.goal_year || projection.default_year, min: goal_years.min, max: goal_years.max, step: 1, format: "year", hint: t(".goal_hint") }
+  ]
+  shown = ->(slider) do
+    case slider[:format]
+    when "percent" then "#{pct.(slider[:value].to_d)}%"
+    when "money" then format_money(Money.new(slider[:value], currency), precision: 0)
+    else slider[:value].to_s
+    end
+  end
+  numbers = [ [ :goal_amount, a.goal_amount ], [ :spending_rise_pct, a.spending_rise_pct ] ]
+  numbers += [ [ :ctc, a.ctc ], [ :employee_pf, a.employee_pf ], [ :other_deductions, a.other_deductions ] ] if projection.india?
+  buckets = projection.buckets
+%>
+<section class="bg-container rounded-xl shadow-border-xs p-4 lg:p-6 space-y-5">
+  <div class="flex flex-wrap items-baseline justify-between gap-2">
+    <h2 class="text-sm font-medium text-primary"><%= t(".title") %></h2>
+    <p class="text-xs text-secondary"><%= t(".hint") %></p>
+  </div>
+
+  <%= form_with url: projection_path(year: year), method: :patch, scope: :projection,
+        data: { controller: "auto-submit-form projection-assumptions", projection_assumptions_currency_value: currency,
+                projection_assumptions_locale_value: I18n.locale } do |f| %>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5">
+      <% sliders.each do |s| %>
+        <div class="space-y-2">
+          <div class="flex items-baseline justify-between text-sm">
+            <%= f.label s[:key], t(".#{s[:label]}"), class: "text-primary" %>
+            <output class="font-semibold text-primary <%= "privacy-sensitive" if s[:format] == "money" %>" for="projection_<%= s[:key] %>"
+                    data-projection-assumptions-target="output"><%= shown.(s) %></output>
+          </div>
+          <%= f.range_field s[:key], value: s[:value].to_s, min: s[:min], max: s[:max], step: s[:step],
+                class: "w-full text-primary accent-current",
+                data: { auto_submit_form_target: "auto", autosubmit_trigger_event: "change", format: s[:format],
+                        action: "input->projection-assumptions#update" } %>
+          <p class="text-xs text-secondary"><%= s[:hint] %></p>
+        </div>
+      <% end %>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
+      <% numbers.each do |key, value| %>
+        <div class="space-y-1">
+          <%= f.label key, t(".#{key}"), class: "block text-xs text-secondary" %>
+          <%= f.number_field key, value: value&.positive? ? value.to_s("F").delete_suffix(".0") : nil, min: 0, step: "any",
+                class: "w-full text-sm rounded-lg border border-secondary px-2.5 py-1.5 bg-container text-primary privacy-sensitive",
+                data: { auto_submit_form_target: "auto" } %>
+        </div>
+      <% end %>
+    </div>
+    <% if projection.india? %><p class="text-xs text-secondary mt-2"><%= t(".salary_hint") %></p><% end %>
+
+    <% if buckets.any? %>
+      <fieldset class="mt-6 space-y-2">
+        <legend class="text-xs text-secondary"><%= t(".counts") %></legend>
+        <%= hidden_field_tag "projection[counted][]", "" %>
+        <div class="flex flex-wrap gap-2">
+          <% buckets.each do |bucket| %>
+            <label class="cursor-pointer text-xs rounded-full px-3 py-1.5 border has-[:checked]:bg-container-inset has-[:checked]:border-primary border-dashed border-secondary text-primary">
+              <%= check_box_tag "projection[counted][]", bucket.key, bucket.counted, id: "projection_counted_#{bucket.key}", class: "sr-only",
+                    data: { auto_submit_form_target: "auto" } %>
+              <span aria-hidden="true"><%= bucket.counted ? "✓" : "+" %></span>
+              <%= t(".buckets.#{bucket.key}") %>
+              <span class="text-secondary privacy-sensitive"><%= compact_money(Money.new(bucket.amount, currency)) %></span>
+            </label>
+          <% end %>
+        </div>
+      </fieldset>
+    <% end %>
+  <% end %>
+</section>
