@@ -20,7 +20,8 @@ export default class extends Controller {
 
   onlyChanged() {
     const fields = this.#fields();
-    const toggles = fields.filter((f) => f.name.endsWith("[counted][]"));
+    // The bucket toggles go together, with the list of buckets on screen.
+    const toggles = fields.filter((f) => f.name.endsWith("[counted][]") || f.name.endsWith("[shown][]"));
     const togglesChanged = toggles.some((f) => this.initial.get(f) !== this.#state(f));
 
     for (const field of fields) {

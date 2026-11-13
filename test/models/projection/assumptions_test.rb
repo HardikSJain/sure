@@ -43,6 +43,20 @@ class Projection::AssumptionsTest < ActiveSupport::TestCase
     assert_equal Projection::BUCKET_KEYS - %w[investments bank], assumptions(@user.reload).excluded
   end
 
+  test "toggling only touches the buckets that were on screen" do
+    @a.update!(shown: %w[investments bank], counted: %w[investments])
+    assert_equal %w[bank], assumptions(@user.reload).excluded
+    @a.update!(shown: %w[investments bank], counted: %w[investments bank])
+    assert_equal [], assumptions(@user.reload).excluded
+  end
+
+  test "absurd amounts are ignored" do
+    @a.update!(goal_amount: "1e400", spending: "100000000000000000000")
+    a = assumptions(@user.reload)
+    assert_nil a.goal_amount
+    assert_nil a.spending
+  end
+
   test "other preferences survive" do
     @user.update!(preferences: (@user.preferences || {}).merge("cash_floors" => { "x" => "5" }))
     @a.update!(appraisal_pct: "9")

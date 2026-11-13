@@ -33,6 +33,8 @@
   <%= form_with url: projection_path(year: year), method: :patch, scope: :projection,
         data: { controller: "auto-submit-form projection-assumptions", action: "submit->projection-assumptions#onlyChanged",
                 projection_assumptions_currency_value: currency, projection_assumptions_locale_value: I18n.locale } do |f| %>
+    <%# The form's default button: Enter in a field presses this one, which sends nothing extra. %>
+    <button type="submit" class="sr-only" tabindex="-1" aria-hidden="true"></button>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5">
       <% sliders.each do |s| %>
         <div class="space-y-2">
@@ -45,7 +47,7 @@
                 class: "w-full text-primary accent-current",
                 data: { auto_submit_form_target: "auto", autosubmit_trigger_event: "change", format: s[:format],
                         action: "input->projection-assumptions#update" } %>
-          <p class="text-xs text-secondary">
+          <p class="text-xs text-secondary <%= "privacy-sensitive" if s[:format] == "money" %>">
             <%= s[:hint] %>
             <% if s[:key] == :spending && a.spending && from_data %>
               <%= button_tag t(".use_average"), type: "submit", name: "projection[spending]", value: "",
@@ -78,7 +80,8 @@
     <% if buckets.any? %>
       <fieldset class="mt-6 space-y-2">
         <legend class="text-xs text-secondary"><%= t(".counts") %></legend>
-        <%= hidden_field_tag "projection[counted][]", "" %>
+        <%= hidden_field_tag "projection[counted][]", "", id: nil %>
+        <% buckets.each do |bucket| %><%= hidden_field_tag "projection[shown][]", bucket.key, id: nil %><% end %>
         <div class="flex flex-wrap gap-2">
           <% buckets.each do |bucket| %>
             <label class="cursor-pointer text-xs rounded-full px-3 py-1.5 border has-[:checked]:bg-container-inset has-[:checked]:border-primary border-dashed border-secondary text-primary">

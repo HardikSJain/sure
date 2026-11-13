@@ -46,9 +46,19 @@ class Projection
     family.country == "IN"
   end
 
-  # A take-home is known: a declared salary, or a CTC to work it out from.
+  # Ready when both sides are known: a take-home (a declared salary, or a CTC
+  # to work it out from) and spending (the data's average, or the user's).
   def ready?
-    signals.current_take_home.present? || (india? && assumptions.ctc.present?)
+    missing.nil?
+  end
+
+  # What's needed before projecting: :salary, :spending, or nil.
+  def missing
+    if signals.current_take_home.nil? && !(india? && assumptions.ctc.present?)
+      :salary
+    elsif assumptions.spending.nil? && signals.average_spending.nil?
+      :spending
+    end
   end
 
   def buckets
@@ -114,7 +124,7 @@ class Projection
   end
 
   def spending
-    money(assumptions.spending || signals.average_spending || 0)
+    @spending ||= money(assumptions.spending || signals.average_spending || 0)
   end
 
   def contribution_for(month)

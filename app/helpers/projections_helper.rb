@@ -1,7 +1,7 @@
 module ProjectionsHelper
   # A money amount in a few characters, for headlines and chart labels:
-  # lakh and crore where amounts are grouped the Indian way ("₹99.4 L",
-  # "₹1.08 Cr"), K, M and B elsewhere ("$250K"). Three significant digits.
+  # lakh and crore where amounts are grouped the Indian way ("₹45.6 L",
+  # "₹2.34 Cr"), K, M and B elsewhere ("$250K"). Three significant digits.
   # Below a lakh (or a thousand) the whole amount shows.
   def compact_money(money, symbol: true)
     amount = money.amount.to_d

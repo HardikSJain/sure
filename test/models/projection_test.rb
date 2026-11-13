@@ -113,6 +113,28 @@ class ProjectionTest < ActiveSupport::TestCase
     assert projection.ready?
   end
 
+  test "not ready without spending to go on" do
+    @bank.entries.destroy_all
+    assert_not projection.ready?
+    assert_equal :spending, projection.missing
+    @assumptions.update!(spending: "30000")
+    assert projection.ready?
+  end
+
+  test "works out spending and take-home once, not once a month" do
+    @family.update!(investment_contributions_as_spending: true)
+    p = projection
+    statements = 0
+    counter = ->(*, payload) { statements += 1 unless %w[SCHEMA TRANSACTION].include?(payload[:name]) }
+    ActiveSupport::Notifications.subscribed(counter, "sql.active_record") do
+      p.points
+      p.crossing(:weak)
+      p.ways_sooner
+      p.value_at(2030)
+    end
+    assert_operator statements, :<, 40, "every statement, cached or not"
+  end
+
   test "a goal already reached" do
     @assumptions.update!(goal_amount: "100000")
     p = projection
@@ -131,10 +153,10 @@ class ProjectionTest < ActiveSupport::TestCase
 
   test "age at a date, from the birth date" do
     assert_nil projection.age_at(TODAY)
-    @assumptions.update!(birth_date: "2002-10-19")
-    assert_equal 24, projection.age_at(TODAY)
-    assert_equal 27, projection.age_at(Date.new(2030, 8, 1))
-    assert_equal 28, projection.age_at(Date.new(2030, 10, 19))
+    @assumptions.update!(birth_date: "1995-03-07")
+    assert_equal 31, projection.age_at(TODAY)
+    assert_equal 34, projection.age_at(Date.new(2030, 3, 6))
+    assert_equal 35, projection.age_at(Date.new(2030, 3, 7))
   end
 
   test "take-home steps for an Indian salary with a CTC" do

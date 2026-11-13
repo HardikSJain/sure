@@ -17,19 +17,18 @@ class Projection::Signals
   # Monthly take-home from declared income (transfers in don't count), or
   # nil when none is declared.
   def current_take_home
-    series = family.recurring_transactions
-                   .where(status: "active", manual: true, bill_type: "income", destination_account_id: nil).to_a
-    return nil if series.empty?
+    return @current_take_home if defined?(@current_take_home)
 
-    series.sum { |s| convert(s.monthly_equivalent_amount.amount.abs, s.currency) }.round(2)
+    series = recurring.where(status: "active", manual: true, bill_type: "income", destination_account_id: nil).to_a
+    @current_take_home = series.empty? ? nil : series.sum { |s| convert(s.monthly_equivalent_amount.amount.abs, s.currency) }.round(2)
   end
 
   # Average spending over the last complete months that have activity (up to
   # six), or nil when there are none.
   def average_spending
-    return nil if spending_months.empty?
+    return @average_spending if defined?(@average_spending)
 
-    (expense_totals.total.to_d / spending_months.size).round(2)
+    @average_spending = spending_months.empty? ? nil : ((expense_totals.total.to_d - contributions_in_spending) / spending_months.size).round(2)
   end
 
   # [name, monthly average] of the biggest categories that are habits,
@@ -48,8 +47,7 @@ class Projection::Signals
 
   # Month start => what bills set to end take out of that month.
   def one_offs(from:, through:)
-    family.recurring_transactions
-          .where(status: "active", manual: true, bill_type: "bill", destination_account_id: nil)
+    recurring.where(status: "active", manual: true, bill_type: "bill", destination_account_id: nil)
           .where.not(end_mode: "never")
           .includes(:recurring_occurrences)
           .each_with_object(Hash.new(0.to_d)) do |series, months|
@@ -75,6 +73,23 @@ class Projection::Signals
         month_start = today.beginning_of_month
         first_activity ? (1..SPENDING_MONTHS).map { |n| month_start.prev_month(n) }.select { |s| s >= first_activity.beginning_of_month } : []
       end
+    end
+
+    # Bills on accounts this user can open; another member's private salary
+    # and bills are theirs.
+    def recurring
+      family.recurring_transactions.merge(RecurringTransaction.accessible_by(user))
+    end
+
+    # Money moved into investments is saving, not spending, even when the
+    # family counts it as spending in its reports.
+    def contributions_in_spending
+      return 0.to_d unless family.investment_contributions_as_spending?
+
+      scope = family.transactions.visible.excluding_pending.merge(Entry.excluding_scheduled).where(kind: "investment_contribution")
+      IncomeStatement.new(family, user: user)
+                     .totals(transactions_scope: scope, date_range: spending_period.start_date..spending_period.end_date)
+                     .expense_money.amount.to_d
     end
 
     def spending_period

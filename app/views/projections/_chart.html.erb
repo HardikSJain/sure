@@ -88,7 +88,7 @@
         <i class="absolute w-5 h-5 -translate-x-1/2 -translate-y-1/2 rounded-full" style="<%= pct.(x.(crossing_index), y.(points[crossing_index].middle)) %>; background: color-mix(in srgb, var(--color-green-500) 20%, transparent)"></i>
         <i class="absolute w-2.5 h-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full" style="<%= pct.(x.(crossing_index), y.(points[crossing_index].middle)) %>; background: var(--color-green-500)"></i>
       <% end %>
-      <i class="absolute w-2.5 h-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-current bg-white text-primary" style="<%= pct.(left, y.(today_value)) %>"></i>
+      <i class="absolute w-2.5 h-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-current bg-container text-primary" style="<%= pct.(left, y.(today_value)) %>"></i>
       <i class="hidden absolute w-2.5 h-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full" style="background: var(--color-green-500)" data-projection-chart-target="dot"></i>
     </div>
   </div>

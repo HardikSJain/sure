@@ -65,6 +65,27 @@ class Projection::SignalsTest < ActiveSupport::TestCase
     assert_equal [ [ "Travel", 3_000 ] ], signals.habitual_categories(limit: 1)
   end
 
+  test "another member's private salary and bills don't count" do
+    other = @family.users.create!(email: "member-signals@example.com", password: "password123A!", role: "member",
+                                  first_name: "M", last_name: "S")
+    theirs = create_account(@family, :depository, balance: 1_000, owner: other)
+    declare_bill(theirs, user: other, name: "Their pay", amount: 123_000, first_due_on: Date.new(2026, 12, 1), is_income: true)
+    declare_bill(theirs, user: other, name: "Their tax", amount: 9_000, first_due_on: Date.new(2026, 12, 15),
+                         frequency_preset: "annual", end_after_count: 1)
+    assert_nil signals.current_take_home
+    assert_equal({}, signals.one_offs(from: Date.new(2026, 12, 1), through: Date.new(2027, 12, 31)))
+  end
+
+  test "money moved into investments isn't spending, whatever the family's setting" do
+    @family.update!(investment_contributions_as_spending: true)
+    (5..10).each do |m|
+      spend(@bank, 30_000, date: Date.new(2026, m, 10))
+      @bank.entries.create!(name: "SIP", date: Date.new(2026, m, 5), amount: 20_000, currency: @bank.currency,
+                            entryable: Transaction.new(kind: "investment_contribution"))
+    end
+    assert_equal 30_000, signals.average_spending
+  end
+
   private
     def category(name)
       @family.categories.create!(name: name, color: "#123456", lucide_icon: "shapes")

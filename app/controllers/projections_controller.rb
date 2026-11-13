@@ -15,7 +15,7 @@ class ProjectionsController < ApplicationController
     def assumption_params
       params.fetch(:projection, {}).permit(
         :appraisal_pct, :return_pct, :spending, :spending_rise_pct, :goal_amount, :birth_date,
-        :ctc, :employee_pf, :other_deductions, counted: []
+        :ctc, :employee_pf, :other_deductions, counted: [], shown: []
       )
     end
 end

@@ -7,6 +7,8 @@ en:
       estimates: Estimates, not promises. Markets don't move in straight lines.
       not_ready: Add your salary as an income bill in Bills, or enter your yearly CTC below, to see where you're headed.
       not_ready_link: Go to Bills
+      not_ready_no_ctc: Add your salary as an income bill in Bills to see where you're headed.
+      needs_spending: There's no spending history to go on yet. Set what you usually spend a month below.
     headline:
       reach_label: You reach %{goal} in
       at_age: at %{age}

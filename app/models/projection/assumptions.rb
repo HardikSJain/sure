@@ -10,6 +10,8 @@ class Projection::Assumptions
   RANGES = { "appraisal_pct" => 0..30, "return_pct" => 0..25, "spending_rise_pct" => 0..20 }.freeze
   # Zero means "not set" for these.
   UNSET_AT_ZERO = %w[goal_amount ctc].freeze
+  # Anything bigger is a typo (or "1e400"), not an amount.
+  MAX_AMOUNT = BigDecimal("1e15")
 
   attr_reader :user, :today
 
@@ -38,7 +40,9 @@ class Projection::Assumptions
 
   # Takes form values (strings). Only keys present change: a blank one goes
   # back to its default, one that isn't a number is ignored, and one out of
-  # range is clamped. `counted` lists the buckets that count.
+  # range is clamped. `counted` lists the buckets that count among those
+  # `shown` on the form (all of them when not given); the rest keep their
+  # setting, so a bucket that appears later isn't left out by accident.
   def update!(params)
     params = params.to_h.stringify_keys
     user.update_projection_assumptions! do |values|
@@ -46,7 +50,8 @@ class Projection::Assumptions
       apply_birth_date(values, params["birth_date"]) if params.key?("birth_date")
       if params.key?("counted")
         counted = Array(params["counted"]).map(&:to_s) & Projection::BUCKET_KEYS
-        values["excluded"] = Projection::BUCKET_KEYS - counted
+        shown = params.key?("shown") ? Array(params["shown"]).map(&:to_s) & Projection::BUCKET_KEYS : Projection::BUCKET_KEYS
+        values["excluded"] = Projection::BUCKET_KEYS & ((Array(values["excluded"]) - shown) | (shown - counted))
       end
     end
     @saved = nil
@@ -85,7 +90,7 @@ class Projection::Assumptions
 
     def parse(text)
       number = BigDecimal(text)
-      number.finite? ? number : nil
+      number.finite? && number.abs <= MAX_AMOUNT ? number : nil
     rescue ArgumentError
       nil
     end

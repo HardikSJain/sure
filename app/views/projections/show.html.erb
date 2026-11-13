@@ -14,8 +14,12 @@
       </section>
     <% else %>
       <div class="bg-container rounded-xl shadow-border-xs p-4 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <p class="text-sm text-primary"><%= t(".not_ready") %></p>
-        <%= link_to t(".not_ready_link"), bills_path, class: "text-xs text-secondary hover:text-primary", data: { turbo_frame: "_top" } %>
+        <% if @projection.missing == :spending %>
+          <p class="text-sm text-primary"><%= t(".needs_spending") %></p>
+        <% else %>
+          <p class="text-sm text-primary"><%= t(@projection.india? ? ".not_ready" : ".not_ready_no_ctc") %></p>
+          <%= link_to t(".not_ready_link"), bills_path, class: "text-xs text-secondary hover:text-primary", data: { turbo_frame: "_top" } %>
+        <% end %>
       </div>
     <% end %>
 
