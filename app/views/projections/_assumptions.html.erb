@@ -33,8 +33,8 @@
   </div>
 
   <%= form_with url: projection_path(year: year), method: :patch, scope: :projection,
-        data: { controller: "auto-submit-form projection-assumptions", projection_assumptions_currency_value: currency,
-                projection_assumptions_locale_value: I18n.locale } do |f| %>
+        data: { controller: "auto-submit-form projection-assumptions", action: "submit->projection-assumptions#onlyChanged",
+                projection_assumptions_currency_value: currency, projection_assumptions_locale_value: I18n.locale } do |f| %>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5">
       <% sliders.each do |s| %>
         <div class="space-y-2">
@@ -47,7 +47,13 @@
                 class: "w-full text-primary accent-current",
                 data: { auto_submit_form_target: "auto", autosubmit_trigger_event: "change", format: s[:format],
                         action: "input->projection-assumptions#update" } %>
-          <p class="text-xs text-secondary"><%= s[:hint] %></p>
+          <p class="text-xs text-secondary">
+            <%= s[:hint] %>
+            <% if s[:key] == :spending && a.spending && from_data %>
+              <%= button_tag t(".use_average"), type: "submit", name: "projection[spending]", value: "",
+                    class: "ml-1 underline underline-offset-2 hover:text-primary" %>
+            <% end %>
+          </p>
         </div>
       <% end %>
     </div>

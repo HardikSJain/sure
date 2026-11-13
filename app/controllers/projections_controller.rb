@@ -3,6 +3,7 @@ class ProjectionsController < ApplicationController
     @projection = Projection.new(Current.family, user: Current.user)
     year = params[:year].to_i
     @year = @projection.years.cover?(year) ? year : @projection.default_year
+    @breadcrumbs = [ [ t("breadcrumbs.home"), root_path ], [ t("projections.show.title"), nil ] ]
   end
 
   def update

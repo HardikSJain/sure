@@ -69,7 +69,7 @@ en:
       goal_year: Goal year
       goal_amount: Goal amount
       goal_hint: Everything left after spending is invested.
-      spending_rise: Spending rise each April (%)
+      spending_rise_pct: Spending rise each April (%)
       ctc: Yearly CTC
       employee_pf: Your PF a year
       other_deductions: Other salary deductions a year

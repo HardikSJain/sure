@@ -19,6 +19,13 @@ class ProjectionsControllerTest < ActionDispatch::IntegrationTest
     assert_match(/depending on markets/, response.body)
   end
 
+  test "the breadcrumb and every field have their words" do
+    get projection_path
+    assert_select "[data-breadcrumbs] span", text: "Where you're headed"
+    assert_select "label", text: "Spending rise each April (%)"
+    assert_select "span.translation_missing", count: 0
+  end
+
   test "the year switcher moves the headline; a year out of range falls back" do
     get projection_path(year: Date.current.year + 3)
     assert_match(/December #{Date.current.year + 3}/, response.body)
@@ -38,6 +45,17 @@ class ProjectionsControllerTest < ActionDispatch::IntegrationTest
     assert_equal 10, Projection::Assumptions.new(@user.reload).appraisal_pct
     follow_redirect!
     assert_response :success
+  end
+
+  test "a spending figure the user set can go back to the average" do
+    @bank.entries.create!(name: "Spend", date: Date.current.prev_month.beginning_of_month, amount: 3_000, currency: @bank.currency,
+                          entryable: Transaction.new(kind: "standard"))
+    get projection_path
+    assert_select "button[name='projection[spending]']", count: 0
+
+    Projection::Assumptions.new(@user).update!(spending: "5000")
+    get projection_path
+    assert_select "button[name='projection[spending]'][value='']", text: "Use my average"
   end
 
   test "unticking every bucket leaves them all out" do
