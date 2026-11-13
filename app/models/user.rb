@@ -683,10 +683,6 @@ class User < ApplicationRecord
     end
   end
 
-  # Locked read-modify-write of the preferences JSONB: yields a copy of the
-  # current preferences (re-read under a row lock) to change in place, then
-  # saves it, so concurrent updates of other keys are not lost. Attributes set
-  # on the user inside the block are saved with it.
   # The least a bank account should hold (the room forecast warns below it).
   # Per account, in the account's currency; 0 when never set.
   def cash_floor(account)
@@ -710,6 +706,25 @@ class User < ApplicationRecord
     end
   end
 
+  # What the user changed on their net worth projection, as stored strings;
+  # Projection::Assumptions reads and checks them.
+  def projection_assumptions
+    preferences&.dig("projection") || {}
+  end
+
+  # Yields the stored projection values to change in place, under the lock.
+  def update_projection_assumptions!
+    with_locked_preferences do |prefs|
+      values = prefs["projection"] || {}
+      yield values
+      prefs["projection"] = values
+    end
+  end
+
+  # Locked read-modify-write of the preferences JSONB: yields a copy of the
+  # current preferences (re-read under a row lock) to change in place, then
+  # saves it, so concurrent updates of other keys are not lost. Attributes set
+  # on the user inside the block are saved with it.
   def with_locked_preferences
     transaction do
       lock!
