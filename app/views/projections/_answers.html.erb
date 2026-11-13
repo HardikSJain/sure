@@ -18,9 +18,9 @@
       <h3 class="text-sm font-medium text-primary"><%= t(".sooner_title") %></h3>
       <p class="text-xs text-secondary"><%= t(".sooner_hint") %></p>
     </div>
-    <ul class="divide-y divide-primary rounded-xl bg-container-inset">
+    <ul class="rounded-xl bg-container-inset">
       <% ways.each do |way| %>
-        <li class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 px-3.5 py-2.5 text-sm">
+        <li class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 px-3.5 py-2.5 text-sm border-t border-primary first:border-t-0">
           <span class="text-primary privacy-sensitive">
             <%= way.kind == :category ? t(".less_on", amount: format_money(way.amount, precision: 0), category: way.name) : t(".less_overall", amount: format_money(way.amount, precision: 0)) %>
           </span>

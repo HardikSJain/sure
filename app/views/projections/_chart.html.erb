@@ -78,7 +78,7 @@
         <span class="absolute -translate-y-full pb-3 font-medium whitespace-nowrap <%= cx / w > 0.8 ? "-translate-x-full" : "-translate-x-1/2" %>"
               style="<%= pct.(cx, y.(points[crossing_index].middle)) %>; color: var(--color-green-500)"><%= t(".crossing", goal: money.(goal), month: l(projection.crossing, format: "%b %Y")) %></span>
       <% end %>
-      <span class="absolute pt-2.5 pl-1.5 text-secondary whitespace-nowrap privacy-sensitive" style="<%= pct.(left, y.(today_value)) %>"><%= t(".today", amount: money.(today_value)) %></span>
+      <span class="absolute -translate-y-1/2 pl-3.5 text-secondary whitespace-nowrap privacy-sensitive" style="<%= pct.(left, y.(today_value)) %>"><%= t(".today", amount: money.(today_value)) %></span>
 
       <%# Dots as page elements too, so they stay round when the chart stretches. %>
       <% junes.each do |i| %>
