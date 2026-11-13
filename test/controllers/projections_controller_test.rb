@@ -19,6 +19,12 @@ class ProjectionsControllerTest < ActionDispatch::IntegrationTest
     assert_match(/depending on markets/, response.body)
   end
 
+  test "chart labels are page text, so they stay readable on a phone" do
+    get projection_path
+    assert_select "[data-controller~='projection-chart'] svg text", count: 0
+    assert_select "[data-projection-chart-labels] span", minimum: 3
+  end
+
   test "the breadcrumb and every field have their words" do
     get projection_path
     assert_select "[data-breadcrumbs] span", text: "Where you're headed"

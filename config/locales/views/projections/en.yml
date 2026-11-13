@@ -51,8 +51,8 @@ en:
       growth: Market growth
       loss: Market losses
     take_home:
-      title: Take-home after tax, with a %{rate}% appraisal each June
-      title_no_tax: Take-home, with a %{rate}% raise each June
+      title: Take-home after tax, raised %{rate}% each June
+      title_no_tax: Take-home, raised %{rate}% each June
       now: Now
       dip: full-year tax
     assumptions:
