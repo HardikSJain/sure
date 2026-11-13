@@ -122,6 +122,16 @@ en:
         balance_after: "%{amount} after"
         empty: "Nothing scheduled in the next 30 days."
         add_bills: "Add bills and income"
+      projection:
+        title: "Where you're headed"
+        label: "Net worth by December %{year}"
+        range: "Between %{low} and %{high}"
+        goal: "%{share}% of %{amount}"
+        cross: "You cross it in %{month}"
+        not_reached: "Not reached by %{month}"
+        not_ready: "Add your salary as an income bill to see where your net worth is headed."
+        see_all: "See the full projection"
+        sparkline_aria: "Net worth from today to %{month}, with the range from weak to strong markets"
       net_worth_mix:
         title: "What you own"
         net_worth: "Net worth"

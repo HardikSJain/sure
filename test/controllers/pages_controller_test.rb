@@ -273,6 +273,20 @@ class PagesControllerTest < ActionDispatch::IntegrationTest
     assert_select "#net-worth-mix"
   end
 
+  test "dashboard shows the projection card linking to the full page" do
+    get root_path
+    assert_select "section[data-section-key='projection'] a[href='#{projection_path}']"
+  end
+
+  test "the projection card comes right after what you own for a user with no saved order" do
+    @user.update!(preferences: (@user.preferences || {}).merge("section_order" => %w[cashflow_sankey balance_sheet]))
+
+    get root_path
+
+    keys = css_select("section[data-section-key]").map { |section| section["data-section-key"] }
+    assert_equal keys.index("net_worth_mix") + 1, keys.index("projection")
+  end
+
   test "next 30 days widget follows the bills preview gate" do
     get root_path
     assert_select "section[data-section-key='upcoming_money']", count: 0

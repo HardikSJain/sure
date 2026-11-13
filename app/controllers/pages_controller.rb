@@ -17,6 +17,7 @@ class PagesController < ApplicationController
     "spending_calendar"  => { col_span: "full",   grow: false, min_height: 0, width_toggle: true },
     "upcoming_money"     => { col_span: "single", grow: false, min_height: 0, width_toggle: true },
     "net_worth_mix"      => { col_span: "single", grow: false, min_height: 0, width_toggle: true },
+    "projection"         => { col_span: "single", grow: false, min_height: 0, width_toggle: true },
     "cashflow_sankey"    => { col_span: "full",   grow: false, min_height: 384, width_toggle: true },
     "money_flow"         => { col_span: "single", grow: false, min_height: 0,   width_toggle: true },
     "spending_trend"     => { col_span: "single", grow: true,  min_height: 208, width_toggle: true },
@@ -30,7 +31,7 @@ class PagesController < ApplicationController
   # first time they appear, ahead of a saved order that predates them, the way
   # the insights feed does. Dragging any widget saves an order that includes
   # them, and from then on that order wins.
-  LEADING_SECTION_KEYS = %w[insights_feed month_pulse spending_calendar upcoming_money net_worth_mix].freeze
+  LEADING_SECTION_KEYS = %w[insights_feed month_pulse spending_calendar upcoming_money net_worth_mix projection].freeze
 
   # Number of consecutive months (ending at the selected month) shown as
   # bars in the "money_flow" dashboard widget.
@@ -221,6 +222,17 @@ class PagesController < ApplicationController
             partial: "pages/dashboard/net_worth_mix",
             layout: section_layout("net_worth_mix"),
             locals: { mix: Dashboard::NetWorthMix.new(Current.family, investment_statement: @investment_statement, balance_sheet: @balance_sheet) },
+            visible: @accounts.any?,
+            collapsible: true
+          }
+        },
+        "projection" => -> {
+          {
+            key: "projection",
+            title: "pages.dashboard.projection.title",
+            partial: "pages/dashboard/projection",
+            layout: section_layout("projection"),
+            locals: { projection: Projection.new(Current.family, user: Current.user) },
             visible: @accounts.any?,
             collapsible: true
           }
