@@ -15,15 +15,6 @@ class Projection::ModelTest < ActiveSupport::TestCase
     assert_equal 240_000, @m.put_in(23)
   end
 
-  test "extra a month is the smallest hundred that reaches the goal" do
-    extra = @m.extra_needed(goal: 450_000, by: 23)
-    assert_equal 0, extra % 100
-    reach = ->(e) { Projection::Model.new(growing: 100_000, flat: 20_000, contributions: Array.new(24, 10_000 + e), annual_return: 0.12).values[23] }
-    assert_operator reach.(extra), :>=, 450_000
-    assert_operator reach.(extra - 100), :<, 450_000
-    assert_equal 0, @m.extra_needed(goal: 400_000, by: 23)
-  end
-
   test "crossing is the first month at or above the goal" do
     assert_equal 19, @m.crossing(350_000)
     assert_nil @m.crossing(10_000_000)

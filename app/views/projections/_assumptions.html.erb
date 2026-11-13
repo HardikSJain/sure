@@ -6,14 +6,12 @@
   spending = projection.spending.amount
   from_data = projection.spending_from_data
   spending_max = ([ (from_data&.amount || 0) * 3, spending * 2, 10_000 ].max / 1000).ceil * 1000
-  goal_years = (projection.today.year + 1)..(projection.today.year + 15)
   sliders = [
     { key: :appraisal_pct, label: "appraisal", value: a.appraisal_pct, min: 0, max: 30, step: 1, format: "percent", hint: t(".appraisal_hint") },
     { key: :spending, label: "spending", value: spending, min: 0, max: spending_max, step: 500, format: "money",
       hint: from_data ? t(".spending_hint", amount: format_money(from_data, precision: 0), rise: pct.(a.spending_rise_pct)) : t(".spending_hint_none") },
     { key: :return_pct, label: "return", value: a.return_pct, min: 0, max: 25, step: 0.5, format: "percent",
-      hint: t(".return_hint", weak: pct.(projection.return_pct(:weak)), strong: pct.(projection.return_pct(:strong))) },
-    { key: :goal_year, label: "goal_year", value: a.goal_year || projection.default_year, min: goal_years.min, max: goal_years.max, step: 1, format: "year", hint: t(".goal_hint") }
+      hint: t(".return_hint", weak: pct.(projection.return_pct(:weak)), strong: pct.(projection.return_pct(:strong))) }
   ]
   shown = ->(slider) do
     case slider[:format]
@@ -67,7 +65,14 @@
                 data: { auto_submit_form_target: "auto" } %>
         </div>
       <% end %>
+      <div class="space-y-1">
+        <%= f.label :birth_date, t(".birth_date"), class: "block text-xs text-secondary" %>
+        <%= f.date_field :birth_date, value: a.birth_date&.iso8601, max: projection.today.iso8601,
+              class: "w-full text-sm rounded-lg border border-secondary px-2.5 py-1.5 bg-container text-primary privacy-sensitive",
+              data: { auto_submit_form_target: "auto" } %>
+      </div>
     </div>
+    <p class="text-xs text-secondary mt-2"><%= t(".goal_hint") %></p>
     <% if projection.india? %><p class="text-xs text-secondary mt-2"><%= t(".salary_hint") %></p><% end %>
 
     <% if buckets.any? %>

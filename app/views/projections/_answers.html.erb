@@ -1,24 +1,10 @@
 <%# locals: (projection:, year:) %>
 <%
-  goal = projection.goal
-  goal_label = goal && l(projection.goal_month, format: "%b %Y")
+  month = ->(date) { l(date, format: "%b %Y") }
+  ways = projection.ways_sooner
   epf = projection.epf_aside(year)
   value = projection.value_at(year)
   parts = projection.composition(year)
-  pct = ->(rate) { rate.to_s("F").delete_suffix(".0") }
-  tiles = []
-  if goal
-    on_time = projection.extra_needed(:middle)
-    weak = projection.extra_needed(:weak)
-    tiles << { label: t(".on_time_label"), value: on_time.zero? ? t(".on_track") : t(".per_month", amount: format_money(on_time, precision: 0)),
-               detail: t(".reaches", goal: compact_money(goal), month: goal_label) }
-    tiles << { label: t(".weak_label"), value: weak.zero? ? t(".on_track") : t(".per_month", amount: format_money(weak, precision: 0)),
-               detail: weak.zero? ? t(".weak_on_track", rate: pct.(projection.return_pct(:weak))) : t(".weak_detail", rate: pct.(projection.return_pct(:weak))) }
-  end
-  if epf
-    tiles << { label: t(".epf_label"), value: t(".epf_amount", amount: compact_money(epf)),
-               detail: projection.buckets.any? { |b| b.key == "epf" } ? t(".epf_left_out") : t(".epf_no_account", month: l(Date.new(year, 12, 1), format: "%b %Y")) }
-  end
   segments = [
     [ t(".today"), parts[:today], "var(--color-gray-500)" ],
     [ t(".put_in"), parts[:put_in], "var(--color-blue-500)" ],
@@ -26,20 +12,43 @@
   ]
   positive_total = segments.sum { |_, m, _| [ m.amount, 0 ].max }
 %>
-<% if tiles.any? %>
-  <div class="grid grid-cols-1 <%= { 1 => "sm:grid-cols-1", 2 => "sm:grid-cols-2", 3 => "sm:grid-cols-3" }[tiles.size] %> gap-2.5">
-    <% tiles.each do |tile| %>
-      <div class="rounded-xl bg-container-inset px-3.5 py-3">
-        <p class="text-xs text-secondary"><%= tile[:label] %></p>
-        <p class="text-base font-semibold text-primary mt-0.5 privacy-sensitive"><%= tile[:value] %></p>
-        <p class="text-xs text-secondary mt-0.5 privacy-sensitive"><%= tile[:detail] %></p>
-      </div>
-    <% end %>
+<% if ways.any? %>
+  <div class="space-y-2" data-projection-sooner>
+    <div class="flex flex-wrap items-baseline justify-between gap-2">
+      <h3 class="text-sm font-medium text-primary"><%= t(".sooner_title") %></h3>
+      <p class="text-xs text-secondary"><%= t(".sooner_hint") %></p>
+    </div>
+    <ul class="divide-y divide-primary rounded-xl bg-container-inset">
+      <% ways.each do |way| %>
+        <li class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 px-3.5 py-2.5 text-sm">
+          <span class="text-primary privacy-sensitive">
+            <%= way.kind == :category ? t(".less_on", amount: format_money(way.amount, precision: 0), category: way.name) : t(".less_overall", amount: format_money(way.amount, precision: 0)) %>
+          </span>
+          <span class="text-right">
+            <% if way.crossing %>
+              <span class="font-medium text-primary"><%= month.(way.crossing) %><% if (a = projection.age_at(way.crossing)) %>, <%= t(".at_age", age: a) %><% end %></span>
+              <span class="text-xs <%= way.months_sooner.to_i.positive? ? "text-success" : "text-secondary" %>">
+                <%= way.months_sooner.nil? ? t(".within_reach") : way.months_sooner.positive? ? t(".months_sooner", count: way.months_sooner) : t(".no_change") %>
+              </span>
+            <% else %>
+              <span class="text-xs text-secondary"><%= t(".still_beyond", years: Projection::SEARCH_YEARS) %></span>
+            <% end %>
+          </span>
+        </li>
+      <% end %>
+    </ul>
   </div>
 <% end %>
 
+<% if epf %>
+  <p class="text-xs text-secondary privacy-sensitive">
+    <span class="font-medium text-primary"><%= t(".epf_label") %></span>
+    <%= projection.buckets.any? { |b| b.key == "epf" } ? t(".epf_left_out", amount: compact_money(epf)) : t(".epf_no_account", amount: compact_money(epf), month: month.(Date.new(year, 12, 1))) %>
+  </p>
+<% end %>
+
 <div class="space-y-2">
-  <p class="text-xs text-secondary privacy-sensitive"><%= t(".made_of", amount: compact_money(value)) %></p>
+  <p class="text-xs text-secondary privacy-sensitive"><%= t(".made_of", amount: compact_money(value), month: month.(Date.new(year, 12, 1))) %></p>
   <% if positive_total.positive? %>
     <div class="flex h-2.5 w-full gap-0.5 overflow-hidden rounded-full" role="img"
          aria-label="<%= segments.map { |label, m, _| "#{label} #{compact_money(m)}" }.join(", ") %>">

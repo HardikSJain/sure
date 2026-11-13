@@ -52,7 +52,24 @@ class Projection::SignalsTest < ActiveSupport::TestCase
     assert_equal({}, signals.one_offs(from: Date.new(2026, 12, 1), through: Date.new(2027, 12, 31)))
   end
 
+  test "habitual categories: the biggest that come up at least twice a month" do
+    travel = category("Travel")
+    shopping = category("Shopping")
+    lumps = category("Lump sums")
+    (5..10).each do |m|
+      3.times { |i| spend(@bank, 1_000, date: Date.new(2026, m, 5 + i), category: travel) }
+      2.times { |i| spend(@bank, 500, date: Date.new(2026, m, 12 + i), category: shopping) }
+      spend(@bank, 9_000, date: Date.new(2026, m, 20), category: lumps)
+    end
+    assert_equal [ [ "Travel", 3_000 ], [ "Shopping", 1_000 ] ], signals.habitual_categories(limit: 3)
+    assert_equal [ [ "Travel", 3_000 ] ], signals.habitual_categories(limit: 1)
+  end
+
   private
+    def category(name)
+      @family.categories.create!(name: name, color: "#123456", lucide_icon: "shapes")
+    end
+
     def signals
       Projection::Signals.new(@family, user: @user, today: Date.new(2026, 11, 13))
     end

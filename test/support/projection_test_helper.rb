@@ -25,8 +25,8 @@ module ProjectionTestHelper
     bill
   end
 
-  def spend(account, amount, date:)
+  def spend(account, amount, date:, category: nil)
     account.entries.create!(name: "Spend", date: date, amount: amount, currency: account.currency,
-                            entryable: Transaction.new(kind: "standard"))
+                            entryable: Transaction.new(kind: "standard", category: category))
   end
 end

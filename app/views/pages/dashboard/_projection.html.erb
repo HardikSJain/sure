@@ -2,8 +2,10 @@
 <div id="projection-card" class="px-4 pb-4 space-y-3">
   <% if projection.ready? %>
     <%
-      year = projection.default_year
       goal = projection.goal
+      crossing = projection.crossing
+      year = projection.default_year
+      month = ->(date) { l(date, format: "%b %Y") }
       points = projection.points.select { |p| p.month <= Date.new(year, 12, 1) }
       w, h = 300.0, 64.0
       values = points.flat_map { |p| [ p.weak.to_f, p.strong.to_f ] } + [ projection.today_total.amount.to_f, goal&.amount&.to_f ].compact
@@ -19,31 +21,38 @@
              points.each_with_index.to_a.reverse.map { |p, i| "L#{x.(i)},#{y.(p.weak)}" }.join(" ") + " Z"
     %>
     <div class="flex flex-wrap items-end justify-between gap-3">
-      <div>
-        <p class="text-xs text-secondary"><%= t(".label", year: year) %></p>
-        <p class="text-2xl font-medium privacy-sensitive"><%= compact_money(projection.value_at(year)) %></p>
-        <p class="text-xs text-secondary privacy-sensitive">
-          <%= t(".range", low: compact_money(projection.value_at(year, :weak)), high: compact_money(projection.value_at(year, :strong))) %>
-        </p>
-      </div>
       <% if goal %>
-        <div class="flex items-center gap-2 text-xs">
-          <div class="text-right">
-            <p class="font-medium privacy-sensitive"><%= t(".goal", share: projection.goal_share, amount: compact_money(goal)) %></p>
-            <p class="text-secondary">
-              <%= projection.crossing ? t(".cross", month: l(projection.crossing, format: "%b %Y")) : t(".not_reached", month: l(projection.months.last, format: "%b %Y")) %>
+        <div>
+          <p class="text-xs text-secondary privacy-sensitive"><%= t(".reach_label", goal: compact_money(goal)) %></p>
+          <% if crossing %>
+            <p class="text-2xl font-medium">
+              <%= month.(crossing) %><% if (age = projection.age_at(crossing)) %><span class="text-base text-secondary ml-1.5"><%= t(".at_age", age: age) %></span><% end %>
             </p>
-          </div>
+            <p class="text-xs text-secondary"><%= t(".range", strong: (s = projection.crossing(:strong)) ? month.(s) : t(".beyond"), weak: (wk = projection.crossing(:weak)) ? month.(wk) : t(".beyond")) %></p>
+          <% else %>
+            <p class="text-xl font-medium"><%= t(".not_within", years: Projection::SEARCH_YEARS) %></p>
+          <% end %>
+        </div>
+        <div class="flex items-center gap-2 text-xs">
+          <p class="text-right text-secondary privacy-sensitive"><%= t(".share", share: projection.goal_share) %></p>
           <svg width="36" height="36" viewBox="0 0 36 36" aria-hidden="true" class="shrink-0">
             <circle cx="18" cy="18" r="14" fill="none" stroke="var(--color-yellow-500)" stroke-opacity=".2" stroke-width="4" />
             <circle cx="18" cy="18" r="14" fill="none" stroke="var(--color-yellow-500)" stroke-width="4" stroke-linecap="round"
                     stroke-dasharray="<%= (ring * projection.goal_share / 100.0).round(1) %> <%= ring.round(1) %>" transform="rotate(-90 18 18)" />
           </svg>
         </div>
+      <% else %>
+        <div>
+          <p class="text-xs text-secondary"><%= t(".label", year: year) %></p>
+          <p class="text-2xl font-medium privacy-sensitive"><%= compact_money(projection.value_at(year)) %></p>
+          <p class="text-xs text-secondary privacy-sensitive">
+            <%= t(".value_range", low: compact_money(projection.value_at(year, :weak)), high: compact_money(projection.value_at(year, :strong))) %>
+          </p>
+        </div>
       <% end %>
     </div>
     <svg viewBox="0 0 <%= w.to_i %> <%= h.to_i %>" preserveAspectRatio="none" class="w-full h-16" role="img"
-         aria-label="<%= t(".sparkline_aria", month: l(Date.new(year, 12, 1), format: "%b %Y")) %>">
+         aria-label="<%= t(".sparkline_aria", month: month.(Date.new(year, 12, 1))) %>">
       <path d="<%= band %>" fill="var(--color-green-500)" fill-opacity=".14" />
       <path d="<%= middle %>" fill="none" stroke="var(--color-green-500)" stroke-width="2" vector-effect="non-scaling-stroke" />
       <% if goal %>

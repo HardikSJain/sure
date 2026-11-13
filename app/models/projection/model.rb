@@ -11,8 +11,6 @@
 # The annual return becomes a monthly rate as (1 + r) ** (1/12) - 1, so twelve
 # months of it are exactly r.
 class Projection::Model
-  STEP = 100
-
   def initialize(growing:, flat:, contributions:, annual_return:, epf: nil)
     @growing = growing.to_f
     @flat = flat.to_f
@@ -44,17 +42,6 @@ class Projection::Model
   def put_in(index)
     total = contributions.first(index + 1).sum + (epf ? epf[:monthly] * (index + 1) : 0)
     total.to_d.round(2)
-  end
-
-  # The smallest constant monthly addition, from the first month, that brings
-  # month `by` to the goal: rounded up to the next STEP, so it really does.
-  def extra_needed(goal:, by:)
-    shortfall = goal.to_f - values[by].to_f
-    return 0.to_d unless shortfall.positive?
-
-    months = by + 1
-    factor = rate.zero? ? months : ((1 + rate)**months - 1) / rate
-    ((shortfall / factor / STEP).ceil * STEP).to_d
   end
 
   # Index of the first month at or above the goal.

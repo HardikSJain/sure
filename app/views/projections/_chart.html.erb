@@ -35,7 +35,7 @@
   headline_index = months.index(Date.new(year, 12, 1))
   crossing_index = projection.crossing && months.index(projection.crossing)
   tooltip = points.each_with_index.map do |p, i|
-    { x: x.(i), y: y.(p.middle), month: month_label.(p.month), middle: money.(p.middle),
+    { x: x.(i), y: y.(p.middle), month: [ month_label.(p.month), (a = projection.age_at(p.month)) && t(".age", age: a) ].compact.join(" · "), middle: money.(p.middle),
       range: t(".tooltip_range", low: money.(p.weak), high: money.(p.strong)) }
   end
 %>
@@ -76,7 +76,7 @@
       <% if crossing_index %>
         <% cx = x.(crossing_index) %>
         <span class="absolute -translate-y-full pb-3 font-medium whitespace-nowrap <%= cx / w > 0.8 ? "-translate-x-full" : "-translate-x-1/2" %>"
-              style="<%= pct.(cx, y.(points[crossing_index].middle)) %>; color: var(--color-green-500)"><%= t(".crossing", month: l(projection.crossing, format: "%b %Y")) %></span>
+              style="<%= pct.(cx, y.(points[crossing_index].middle)) %>; color: var(--color-green-500)"><%= t(".crossing", goal: money.(goal), month: l(projection.crossing, format: "%b %Y")) %></span>
       <% end %>
       <span class="absolute pt-2.5 pl-1.5 text-secondary whitespace-nowrap privacy-sensitive" style="<%= pct.(left, y.(today_value)) %>"><%= t(".today", amount: money.(today_value)) %></span>
 

@@ -6,11 +6,10 @@ class Projection::Assumptions
     "appraisal_pct" => 10, "return_pct" => 12, "spending_rise_pct" => 6,
     "employee_pf" => 0, "other_deductions" => 0
   }.freeze
-  NUMBERS = %w[appraisal_pct return_pct spending spending_rise_pct goal_amount goal_year ctc employee_pf other_deductions].freeze
+  NUMBERS = %w[appraisal_pct return_pct spending spending_rise_pct goal_amount ctc employee_pf other_deductions].freeze
   RANGES = { "appraisal_pct" => 0..30, "return_pct" => 0..25, "spending_rise_pct" => 0..20 }.freeze
   # Zero means "not set" for these.
   UNSET_AT_ZERO = %w[goal_amount ctc].freeze
-  GOAL_YEARS_AHEAD = 30
 
   attr_reader :user, :today
 
@@ -19,15 +18,18 @@ class Projection::Assumptions
     @today = today
   end
 
-  (NUMBERS - %w[goal_year]).each do |key|
+  NUMBERS.each do |key|
     define_method(key) do
       raw = saved[key]
       raw ? BigDecimal(raw) : DEFAULTS[key]&.to_d
     end
   end
 
-  def goal_year
-    saved["goal_year"]&.to_i
+  # For showing age next to dates; nil when not given.
+  def birth_date
+    saved["birth_date"]&.then { |raw| Date.iso8601(raw) }
+  rescue Date::Error
+    nil
   end
 
   def excluded
@@ -41,6 +43,7 @@ class Projection::Assumptions
     params = params.to_h.stringify_keys
     user.update_projection_assumptions! do |values|
       (NUMBERS & params.keys).each { |key| apply(values, key, params[key]) }
+      apply_birth_date(values, params["birth_date"]) if params.key?("birth_date")
       if params.key?("counted")
         counted = Array(params["counted"]).map(&:to_s) & Projection::BUCKET_KEYS
         values["excluded"] = Projection::BUCKET_KEYS - counted
@@ -65,8 +68,19 @@ class Projection::Assumptions
       if number.nil?
         values.delete(key)
       else
-        values[key] = key == "goal_year" ? number.to_i.to_s : number.to_s("F")
+        values[key] = number.to_s("F")
       end
+    end
+
+    # A real date, not after today; blank clears it, anything else is ignored.
+    def apply_birth_date(values, raw)
+      text = raw.to_s.strip
+      return values.delete("birth_date") if text.empty?
+
+      date = Date.iso8601(text)
+      values["birth_date"] = date.iso8601 if date <= today
+    rescue Date::Error
+      nil
     end
 
     def parse(text)
@@ -79,8 +93,6 @@ class Projection::Assumptions
     def clamp(key, number)
       if (range = RANGES[key])
         number.clamp(range.min, range.max)
-      elsif key == "goal_year"
-        number.round.clamp(today.year + 1, today.year + GOAL_YEARS_AHEAD)
       elsif UNSET_AT_ZERO.include?(key)
         number.positive? ? number : nil
       else

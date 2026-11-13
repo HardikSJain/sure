@@ -34,7 +34,7 @@ class ProjectionsControllerTest < ActionDispatch::IntegrationTest
 
   test "the year switcher moves the headline; a year out of range falls back" do
     get projection_path(year: Date.current.year + 3)
-    assert_match(/December #{Date.current.year + 3}/, response.body)
+    assert_select "p", text: /Net worth by Dec #{Date.current.year + 3}/
     get projection_path(year: 1999)
     assert_response :success
   end
@@ -46,7 +46,7 @@ class ProjectionsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "junk in the form changes nothing and doesn't break the page" do
-    patch projection_path, params: { projection: { appraisal_pct: "abc", goal_year: "1999" } }
+    patch projection_path, params: { projection: { appraisal_pct: "abc", birth_date: "nonsense" } }
     assert_response :redirect
     assert_equal 10, Projection::Assumptions.new(@user.reload).appraisal_pct
     follow_redirect!
@@ -69,11 +69,15 @@ class ProjectionsControllerTest < ActionDispatch::IntegrationTest
     assert_equal Projection::BUCKET_KEYS, Projection::Assumptions.new(@user.reload).excluded
   end
 
-  test "a goal shows the ring and the answers" do
-    Projection::Assumptions.new(@user).update!(goal_amount: "100000000", goal_year: (Date.current.year + 4).to_s)
+  test "a goal shows when it's reached, the ring and ways to get there sooner" do
+    @bank.entries.create!(name: "Spend", date: Date.current.prev_month.beginning_of_month, amount: 3_000, currency: @bank.currency,
+                          entryable: Transaction.new(kind: "standard"))
+    Projection::Assumptions.new(@user).update!(goal_amount: "500000", birth_date: "1990-06-15")
     get projection_path
     assert_select "[data-projection-goal]"
-    assert_match(/To land it on time/, response.body)
+    assert_match(/You reach/, response.body)
+    assert_select "[data-projection-sooner] li", minimum: 1
+    assert_match(/at \d\d/, response.body)
   end
 
   test "no salary and no CTC asks for one instead of projecting" do

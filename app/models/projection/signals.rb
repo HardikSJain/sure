@@ -4,6 +4,9 @@
 # month they fall in. Ongoing bills are already in the usual spending.
 class Projection::Signals
   SPENDING_MONTHS = 6
+  # A category spent in at least this often (lines a month, on average) is a
+  # habit, where trimming is easiest; a monthly lump sum isn't.
+  HABIT_LINES_A_MONTH = 2
 
   def initialize(family, user:, today: Date.current)
     @family = family
@@ -24,17 +27,23 @@ class Projection::Signals
   # Average spending over the last complete months that have activity (up to
   # six), or nil when there are none.
   def average_spending
-    first_activity = family.earliest_activity_date
-    return nil unless first_activity
+    return nil if spending_months.empty?
 
-    month_start = today.beginning_of_month
-    starts = (1..SPENDING_MONTHS).map { |n| month_start.prev_month(n) }
-                                 .select { |start| start >= first_activity.beginning_of_month }
-    return nil if starts.empty?
+    (expense_totals.total.to_d / spending_months.size).round(2)
+  end
 
-    period = Period.custom(start_date: starts.last, end_date: month_start - 1)
-    total = IncomeStatement.new(family, user: user).expense_totals(period: period).total
-    (total.to_d / starts.size).round(2)
+  # [name, monthly average] of the biggest categories that are habits,
+  # largest first, over the same months as the average.
+  def habitual_categories(limit:)
+    months = spending_months.size
+    return [] if months.zero?
+
+    expense_totals.category_totals
+                  .reject { |ct| ct.category.id.nil? || ct.category.subcategory? }
+                  .select { |ct| lines_in(ct.category) >= HABIT_LINES_A_MONTH * months }
+                  .sort_by { |ct| -ct.total }
+                  .first(limit)
+                  .map { |ct| [ ct.category.name, (ct.total.to_d / months).round(2) ] }
   end
 
   # Month start => what bills set to end take out of that month.
@@ -58,6 +67,31 @@ class Projection::Signals
 
   private
     attr_reader :family, :user, :today
+
+    # Month starts of the last complete months that have activity (up to six).
+    def spending_months
+      @spending_months ||= begin
+        first_activity = family.earliest_activity_date
+        month_start = today.beginning_of_month
+        first_activity ? (1..SPENDING_MONTHS).map { |n| month_start.prev_month(n) }.select { |s| s >= first_activity.beginning_of_month } : []
+      end
+    end
+
+    def spending_period
+      Period.custom(start_date: spending_months.last, end_date: today.beginning_of_month - 1)
+    end
+
+    def expense_totals
+      @expense_totals ||= IncomeStatement.new(family, user: user).expense_totals(period: spending_period)
+    end
+
+    def lines_in(category)
+      @line_counts ||= family.entries.where(entryable_type: "Transaction", date: spending_period.start_date..spending_period.end_date)
+                             .where("entries.amount > 0")
+                             .joins("JOIN transactions ON transactions.id = entries.entryable_id")
+                             .group("transactions.category_id").count
+      ([ category.id ] + category.subcategories.ids).sum { |id| @line_counts[id].to_i }
+    end
 
     def convert(amount, currency)
       return amount.to_d if currency.blank? || currency == family.currency
