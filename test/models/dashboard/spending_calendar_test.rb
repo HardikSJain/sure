@@ -32,6 +32,16 @@ class Dashboard::SpendingCalendarTest < ActiveSupport::TestCase
     assert_includes cell.items.map(&:name), "Dinner out"
   end
 
+  test "a line with no exchange rate is left out of a day's biggest lines, not counted at 1" do
+    day = 4.days.ago.to_date
+    create_transaction(account: accounts(:depository), amount: 50, name: "Coffee", date: day, currency: @family.currency)
+    create_transaction(account: accounts(:depository), amount: 9_000, name: "Unconvertible", date: day, currency: "JPY")
+
+    names = calendar.days.find { |d| d.date == day }.items.map(&:name)
+    assert_includes names, "Coffee"
+    assert_not_includes names, "Unconvertible"
+  end
+
   test "month labels sit on the week holding the 1st, and never crowd the first column" do
     labels = calendar.month_labels
     assert labels.each_cons(2).all? { |(a, _), (b, _)| b - a >= 3 }

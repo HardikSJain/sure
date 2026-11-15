@@ -164,11 +164,10 @@ class Dashboard::SpendingCalendar
         SELECT day, name, total FROM (
           SELECT ae.date AS day, ae.name AS name,
                  #{converted_amount_sql("at")} AS total,
-                 ROW_NUMBER() OVER (PARTITION BY ae.date ORDER BY #{converted_amount_sql("at")} DESC) AS rank
+                 ROW_NUMBER() OVER (PARTITION BY ae.date ORDER BY #{converted_amount_sql("at")} DESC NULLS LAST) AS rank
           FROM (#{transactions_scope.to_sql}) at
           #{entries_join_sql("at")}
           #{accounts_join_sql}
-          #{exchange_rates_join_sql}
           WHERE at.kind NOT IN (#{budget_excluded_kinds_sql})
             #{investment_activity_label_sql("at")}
             AND ae.excluded = false
@@ -179,7 +178,8 @@ class Dashboard::SpendingCalendar
             #{include_finance_accounts_sql}
             AND #{classification_sql("at")} = 'expense'
         ) ranked
-        WHERE rank <= :limit
+        -- A line with no exchange rate has no total; it's left out, not counted at 1.
+        WHERE rank <= :limit AND total IS NOT NULL
         ORDER BY day, total DESC
       SQL
     end
