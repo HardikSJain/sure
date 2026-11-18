@@ -128,9 +128,43 @@ class CashForecast::EventsTest < ActiveSupport::TestCase
     assert_equal [ -200, false ], [ bill.amount, bill.estimate ]
   end
 
+  test "a card bill paid from another bank account is a top-up from here when that account can't cover it above its floor" do
+    spare = card_paying_bank(cash: 10_380, floor: 10_000)
+    due = Date.current + 10
+    card = create_card("Card paid elsewhere", balance: 999, known: due - 40)
+    create_series(spare, name: "Card bill from spare", amount: 3_000, due: due, destination_account: card)
+
+    list = events(user: users(:family_admin))
+    top_up = list.find { |e| e.kind == :top_up }
+    assert_equal [ due, -2_620 ], [ top_up.date, top_up.amount ]
+    assert_nil list.find { |e| e.name == "Card bill from spare" }, "the bill itself is the other account's"
+  end
+
+  test "a card bill already paid from that account asks for no top-up" do
+    spare = card_paying_bank(cash: 10_380, floor: 10_000)
+    due = Date.current + 10
+    card = create_card("Paid card", balance: 3_000, known: due - 20)
+    card.entries.create!(name: "Card payment", date: @known, amount: -3_000, currency: card.currency,
+                         entryable: Transaction.new(kind: "cc_payment"))
+    create_series(spare, name: "Paid card bill", amount: 3_000, due: due, destination_account: card)
+
+    top_ups = events(user: users(:family_admin)).select { |e| e.kind == :top_up }
+    assert_empty top_ups.select { |e| e.date == due }, "this month's bill is paid"
+    assert_equal [ due.next_month, -2_620 ], [ top_ups.first.date, top_ups.first.amount ], "next month's, with no statement yet, still needs one"
+  end
+
   private
-    def events
-      CashForecast::Events.new(@bank, from: @known + 1, through: Date.current + 60).to_a
+    def events(user: nil)
+      CashForecast::Events.new(@bank, from: @known + 1, through: Date.current + 60, user: user).to_a
+    end
+
+    # A second bank account, funded from @bank, that keeps a minimum balance.
+    def card_paying_bank(cash:, floor:)
+      spare = create_bank(name: "Card-paying bank", balance: cash)
+      known_until(spare, @known, cash)
+      create_transfer(from_account: @bank, to_account: spare, amount: 25_000, date: @known - 5)
+      users(:family_admin).update_cash_floor!(spare, floor)
+      spare
     end
 
     def create_card(name, balance:, known:)

@@ -15,6 +15,9 @@ class CashForecast::Events
   # due; a card known up to then has the bill's real amount as its balance.
   STATEMENT_LEAD_DAYS = 25
   WALLET_TYPES = %w[Investment Crypto].freeze
+  # Another bank account can be a wallet too: one that pays a bill (a card
+  # bill, say) and is filled from this account when it runs short.
+  BANK_TYPES = %w[Depository].freeze
 
   # Latest non-pending entry date on an account (statement balances included),
   # never after today.
@@ -123,23 +126,24 @@ class CashForecast::Events
       end
     end
 
-    # A bill paid from a wallet (an investment account's cash) only touches
-    # this account when the wallet can't cover it, and only if this account is
-    # the one that tops that wallet up. Money due into the wallet (income on
-    # it, transfers to it) fills it first.
+    # A bill paid from a wallet (an investment account's cash, or another bank
+    # account) only touches this account when the wallet can't cover it above
+    # its floor, and only if this account is the one that tops that wallet up.
+    # Money due into the wallet (income on it, transfers to it) fills it first.
     def top_up_events
-      wallet_ids = family.recurring_transactions.where(status: "active", destination_account_id: nil).select(:account_id)
-      family.accounts.where(accountable_type: WALLET_TYPES, id: wallet_ids).flat_map do |wallet|
+      wallet_ids = family.recurring_transactions.where(status: "active").where.not(account_id: account.id).select(:account_id)
+      family.accounts.where(accountable_type: WALLET_TYPES + BANK_TYPES, id: wallet_ids).where.not(id: account.id).flat_map do |wallet|
         funding_bank(wallet) == account ? wallet_top_ups(wallet) : []
       end
     end
 
     def wallet_top_ups(wallet)
-      cash = to_account_currency(wallet.cash_balance.to_d, wallet.currency)
+      cash = to_account_currency(spendable(wallet), wallet.currency)
       series = family.recurring_transactions.where(status: "active")
                      .where("account_id = :id OR destination_account_id = :id", id: wallet.id)
-      flows = counted_occurrences(series, after: self.class.last_known_date(wallet)).map do |occurrence, amount|
-        [ occurrence, wallet_inflow?(occurrence.recurring_transaction, wallet) ? amount : -amount ]
+                     .where("destination_account_id IS NULL OR destination_account_id <> ?", account.id)
+      flows = counted_occurrences(series, after: self.class.last_known_date(wallet)).filter_map do |occurrence, amount|
+        wallet_flow(occurrence, amount, wallet)
       end
       name = visible?(wallet) ? "Top up #{wallet.name}" : I18n.t("cash_forecast.top_up_wallet", default: "Top up a wallet")
       flows.sort_by { |occurrence, flow| [ occurrence.effective_due_on, flow.positive? ? 0 : 1 ] }.filter_map do |occurrence, flow|
@@ -153,6 +157,26 @@ class CashForecast::Events
           build(date, name, -short, :top_up, source: wallet) if date >= from
         end
       end
+    end
+
+    # [occurrence, signed amount] for the wallet: money in is positive; a card
+    # bill is what its statement says is still owed (nil when nothing is).
+    def wallet_flow(occurrence, amount, wallet)
+      series = occurrence.recurring_transaction
+      return [ occurrence, amount ] if wallet_inflow?(series, wallet)
+
+      card = series.destination_account
+      return [ occurrence, -amount ] unless card&.accountable_type == "CreditCard"
+
+      bill = card_bill(occurrence, card, amount, occurrence.effective_due_on, series.display_name)
+      bill && [ occurrence, bill.amount ]
+    end
+
+    # What the wallet can spend: an investment account's cash, or a bank
+    # account's balance, above the floor the user keeps in it.
+    def spendable(wallet)
+      cash = WALLET_TYPES.include?(wallet.accountable_type) ? wallet.cash_balance : wallet.balance
+      cash.to_d - (user ? user.cash_floor(wallet) : 0)
     end
 
     def wallet_inflow?(series, wallet)
